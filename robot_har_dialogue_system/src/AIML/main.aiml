@@ -1,0 +1,458 @@
+<aiml version="1.0.1" encoding="UTF-8">
+
+    <!-- ROOT CASES -->
+
+    <category>
+        <pattern> HELLO </pattern>
+        <template>
+            <think>
+                <set name="responder">say_hello</set>
+            </think>
+        </template>
+    </category>
+
+    <category>
+        <pattern>SAVE USER LABEL *</pattern>
+        <template>
+            <think>
+                <set name="user_label"><star/></set>
+                <set name="responder">bypass</set>
+            </think>
+        </template>
+    </category>
+
+    <category>
+        <pattern>AFFIRM LABEL</pattern>
+        <template>
+            <think>
+                <set name="affirm_label">true</set>
+            </think>
+        </template>
+    </category>
+
+    <category>
+        <pattern>DENY LABEL</pattern>
+        <template>
+            <think>
+                <set name="affirm_label">false</set>
+            </think>
+        </template>
+    </category>
+
+    <category>
+        <pattern>DENY LABEL WITH *</pattern>
+        <template>
+            <think>
+                <set name="affirm_label">false</set>
+                <set name="user_label"><star/></set>
+            </think>
+        </template>
+    </category>
+
+    <!-- SYNONYMOUS CASES -->
+
+    <!-- A) DIRECT LABELLING -->
+    <category>
+        <pattern>I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I'M JUST *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I AM JUST *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>AM JUST *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>NO I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>NO I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YES I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YES I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I'M JUST GOING TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I AM JUST GOING TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I'M JUST ABOUT TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I AM JUST ABOUT TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I WAS ABOUT TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I WAS JUST ABOUT TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I'M STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I AM STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I NEED TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I HAVE TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I'VE GOT TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I HAVE GOT TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I GOT TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>AT THE MOMENT I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>AT THE MOMENT I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YOU ARE CORRECT I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YOU ARE CORRECT I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT'S CORRECT I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT'S CORRECT I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT IS CORRECT I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT IS CORRECT I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT'S RIGHT I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT'S RIGHT I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT IS RIGHT I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT IS RIGHT I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>NOW I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>NOW I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YUP STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YEAH STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YES STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YEP STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YEAH I'M STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YEAH I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YEAH I AM STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YEAH I'M STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>NO STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>NO I'M STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>NO I AM STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YES I AM STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YES I'M STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YEAH I AM STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>YEAH I'M STILL *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <!-- B) LABEL AFFIRMATION -->
+
+    <category>
+        <pattern>THAT IS CORRECT</pattern>
+        <template>
+            <srai>AFFIRM LABEL</srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT IS NOT CORRECT</pattern>
+        <template>
+            <srai>DENY LABEL</srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT IS NOT CORRECT I'M *</pattern>
+        <template>
+            <srai>DENY LABEL WITH <star index="1"/></srai>
+        </template>
+    </category>
+
+    <!-- DENY LABEL, CONFIRM ANOTHER LABEL -->
+
+    <category>
+        <pattern>I'M NOT * I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="2"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I AM NOT * I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="2"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I'M NOT DOING EITHER OF THOSE THINGS I'M *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+</aiml>

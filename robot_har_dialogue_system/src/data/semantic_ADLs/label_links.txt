@@ -1,0 +1,34 @@
+other:other:doing something else
+relaxing:relaxing:relaxing
+working:working:working
+studying:studying:studying
+sleeping:sleeping:sleeping
+leaving_the_house:leaving_the_house:going out
+bathing:bathing:bathing
+cooking:cooking:cooking
+prepare_drink:prepare_drink:prearing a drink
+eating:eating:eating
+snacking:snacking:having a snack
+watching_TV:watching_TV:watching TV
+using_computer:using_computer:using a computer
+using_smartphone:using_smartphone:using your smartphone
+using_internet:using_internet:using the internet
+washing_dishes:washing_dishes:washing the dishes
+showering:showering:showering
+reading:reading:reading
+doing_laundry:doing_laundry:doing laundry
+shaving:shaving:shaving
+brushing_teeth:brushing_teeth:brushing teeth
+talking_on_phone:talking_on_phone:talking on the phone
+listening_to_music:listening_to_music:listening to music
+cleaning:cleaning:cleaning
+conversing:conversing:having a conversation
+hosting_guests:hosting_guests:hosting guests
+getting_dressed:getting_dressed:getting dressed
+taking_medication:taking_medication:taking your mediciation
+tidying_up:tidying_up:tidying up
+toileting:toileting:using the toilet
+exercising:exercising:exercising
+drinking:drinking:having a drink
+hobby:hobby:doing a hobby
+other:enter_home:entering your home

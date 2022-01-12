@@ -1,0 +1,13 @@
+version: "2.0"
+
+nlu:
+- intent: har_initiate_adl_query
+  examples: |
+    - har_initiate_adl_query
+    - har initiate adl query
+    - i would like to initiate a har adl query
+
+- intent: goodbye
+  examples: |
+    - goodbye
+    - bye

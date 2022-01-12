@@ -1,0 +1,12 @@
+<aiml version="1.0.1" encoding="UTF-8">
+
+    <category>
+
+        <pattern>LOAD AIML GO</pattern>
+        <template>
+            <learn>AIML/main.aiml</learn>
+        </template>
+
+    </category>
+
+</aiml>
