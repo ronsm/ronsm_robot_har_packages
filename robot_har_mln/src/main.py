@@ -21,8 +21,8 @@ from ronsm_messages.msg import har_evidence_list
 import ronsm_messages.msg
 
 class Main():
-    _ros_reason_feedback = ralt_signalman_messages.msg.har_reasonFeedback()
-    _ros_reason_result = ralt_signalman_messages.msg.har_reasonResult()
+    _ros_reason_feedback = ronsm_messages.msg.har_reasonFeedback()
+    _ros_reason_result = ronsm_messages.msg.har_reasonResult()
     
     def __init__(self):
         rospy.init_node('robot_har_mln', disable_signals=True)
@@ -34,7 +34,7 @@ class Main():
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/evidence', har_evidence_list, queue_size=10)
         
         self.action_name = 'robot_har_mln/har_reason'
-        self._as = actionlib.SimpleActionServer(self.action_name, ralt_signalman_messages.msg.har_reasonAction, execute_cb=self.ros_reason_callback)
+        self._as = actionlib.SimpleActionServer(self.action_name, ronsm_messages.msg.har_reasonAction, execute_cb=self.ros_reason_callback)
         self._as.start()
 
         rospack = rospkg.RosPack()
