@@ -15,10 +15,10 @@ import actionlib
 from std_msgs import msg
 from std_msgs.msg import String
 
-from ralt_signalman_messages.msg import har_simple_evidence
-from ralt_signalman_messages.msg import har_reset
-from ralt_signalman_messages.msg import har_evidence_list
-import ralt_signalman_messages.msg
+from ronsm_messages.msg import har_simple_evidence
+from ronsm_messages.msg import har_reset
+from ronsm_messages.msg import har_evidence_list
+import ronsm_messages.msg
 
 class Main():
     _ros_reason_feedback = ralt_signalman_messages.msg.har_reasonFeedback()
