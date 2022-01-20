@@ -4,3 +4,4 @@ numpy==1.17.4
 pracmln==1.2.4
 rospkg==1.3.0
 rospkg_modules==1.3.0
+colored==1.4.3
