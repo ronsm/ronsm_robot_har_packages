@@ -1,0 +1,10 @@
+Kettle
+Tap
+Oven
+Fridge
+DinnerwareCabinet
+DrinkwareCabinet
+FoodCabinet
+CutleryDrawer
+Bin
+WashingMachine
