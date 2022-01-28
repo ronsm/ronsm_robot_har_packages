@@ -7,6 +7,7 @@ from pracmln import MLN, Database, MLNQuery
 import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import pickle
 
 import rospy
 import rospkg
@@ -29,8 +30,9 @@ class Main():
     def __init__(self):
         rospy.init_node('robot_har_mln', disable_signals=True)
 
-        # Mode
+        # Modes
         self.mode = 'predict' # default is predict
+        self.train_mode = 'global'
 
         # ROSPack Path
         rospack = rospkg.RosPack()
@@ -48,6 +50,7 @@ class Main():
         self.sub_ros_add_rule_start = rospy.Subscriber('/robot_har_mln/mln/new_rule_start', String, callback=self.ros_add_rule_start_callback)
         self.sub_ros_add_rule_stop = rospy.Subscriber('/robot_har_mln/mln/new_rule_stop', String, callback=self.ros_add_rule_stop_callback)
         self.sub_ros_add_rule_label = rospy.Subscriber('/robot_har_mln/mln/label', String, callback=self.ros_add_rule_label_callback)
+        self.pub_ros_mln_train = rospy.Subscriber('/robot_har_mln/mln/train', String, callback=self.ros_mln_train_callback)
 
         # ROS Publishers
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/db/evidence', har_evidence_list, queue_size=10)
@@ -60,6 +63,7 @@ class Main():
         # Loads
         self.create_pred_store()
         self.load_mlns()
+        self.load_global_train_dbs()
         self.load_constants_and_percepts()
 
     # Init. Methods
@@ -74,7 +78,34 @@ class Main():
 
         self.save_mlns()
 
-        self.reset_dbs()
+        self.create_restricted_train_dbs()
+
+        self.load_restricted_train_dbs()
+
+        self.reset_current_evidence()
+
+    def create_restricted_train_dbs(self):
+        restricted_train_db_h = [["header"]]
+        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_h.p'
+        pickle.dump(restricted_train_db_h, open(path, 'wb'))
+
+        restricted_train_db_s = [["header"]]
+        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_s.p'
+        pickle.dump(restricted_train_db_s, open(path, 'wb'))
+
+    def load_global_train_dbs(self):
+        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_h.p'
+        self.global_train_db_h = pickle.load(open(path, 'rb'))
+
+        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.p'
+        self.global_train_db_s = pickle.load(open(path, 'rb'))
+
+    def load_restricted_train_dbs(self):
+        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_h.p'
+        self.restricted_train_db_h = pickle.load(open(path, 'rb'))
+
+        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_s.p'
+        self.restricted_train_db_s = pickle.load(open(path, 'rb'))
 
     def load_constants_and_percepts(self):
         base_path = self.rel_path + '/src/MLNs/common/'
@@ -155,8 +186,8 @@ class Main():
 
         self.db_h = Database(self.mln_h)
         self.db_s = Database(self.mln_s)
-
-        self.reset_dbs()
+        
+        self.reset_current_evidence()
 
     def init_percepts(self):
         for per in self.percepts:
@@ -167,12 +198,10 @@ class Main():
             self.db_s[predicate] = 0.0
 
     def create_pred_store(self):
-        if self.ps:
-            del self.ps
         self.ps = {}
         self.ps['events'] = []
         self.ps['percepts'] = []
-
+        
     # ROS Loop 
 
     def loop(self):
@@ -194,6 +223,7 @@ class Main():
             print('[ROS] Invalid command in ROS evidence topic.')
             
     def ros_reason_callback(self, goal):
+        print('[ROS] Received requested to reason.')
         pred, conf = self.reason()
         
         self._result.pred = pred
@@ -202,21 +232,23 @@ class Main():
         self._as.set_succeeded(self._result)
         
     def ros_reset_callback(self, msg):
-        if msg.reset == 'reset':
-            print('[ROS] Received reset command.')
-            self.reset_dbs()
+        print('[ROS] Received reset command.')
+        self.reset_current_evidence()
 
     def ros_new_mln_callback(self, msg):
+        print('[ROS] Received request to create new MLNs:', msg.data)
         name = msg.data
 
         self.create_mlns(name)
 
     def ros_load_mln_callback(self, msg):
+        print('[ROS] Received request to load MLNs:', msg.data)
         name = msg.data
 
         self.mln_prefix = name
 
         self.load_mlns()
+        self.load_restricted_train_dbs()
 
     def ros_add_rule_start_callback(self, msg):
         self.mode = 'train'
@@ -228,7 +260,21 @@ class Main():
 
     def ros_add_rule_label_callback(self, msg):
         label = msg.data
+        print('[ROS] Received label for new rule:', label)
         self.save_rule(label)
+
+    def ros_mln_train_callback(self, msg):
+        mode = msg.data
+        print('[ROS] Changing MLN training mode to:', mode)
+        if mode == 'global':
+            self.train_mode = 'global'
+        elif mode == 'restricted':
+            self.train_mode = 'restricted'
+        else:
+            print('[ROS] Invalid MLN train mode specified.')
+            
+        print('[ROS] Received request to train MLNs.')
+        self.train_mlns()
 
     # ROS Publishers
 
@@ -270,6 +316,19 @@ class Main():
         path = self.rel_path + '/src/MLNs/' + self.mln_prefix + '_MLN_s.mln'
         self.mln_s.tofile(path)
 
+    def save_train_dbs(self):
+        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_h.p'
+        pickle.dump(self.global_train_db_h, open(path, 'wb'))
+
+        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.p'
+        pickle.dump(self.global_train_db_s, open(path, 'wb'))
+
+        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_h.p'
+        pickle.dump(self.restricted_train_db_h, open(path, 'wb'))
+
+        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_s.p'
+        pickle.dump(self.restricted_train_db_s, open(path, 'wb'))
+
     def save_rule(self, label):
         rule_str = '0.0 '
         for event in self.ps['events']:
@@ -290,9 +349,21 @@ class Main():
 
         self.print_mlns()
 
+        self.save_mlns()
+
+        # Update training evidence DB
+        self.global_train_db_h.append(self.ps['events'])
+        self.restricted_train_db_h.append(self.ps['events'])
+
+        events_and_percepts = self.ps['events'] + self.ps['percepts']
+        self.global_train_db_s.append(events_and_percepts)
+        self.restricted_train_db_s.append(events_and_percepts)
+
+        self.save_train_dbs()
+
         self.create_pred_store()
     
-    def reset_dbs(self):
+    def reset_current_evidence(self):
         del self.db_h
         del self.db_s
         del self.ps
@@ -393,6 +464,9 @@ class Main():
         print('[API]', resp)
         return resp
 
+    def train_mlns(self):
+        pass
+
     # Additional Logic
 
     def decay(self):
@@ -403,8 +477,6 @@ class Main():
         return
 
 if __name__ == '__main__':
-    # threading.Thread(target=lambda: rospy.init_node('robot_har_mln', disable_signals=True)).start()
-
     m = Main()
 
     app = Flask(__name__)
@@ -415,7 +487,7 @@ if __name__ == '__main__':
     @app.route('/reset', methods = ['POST'])
     def reset_handler():
 
-        m.reset_dbs()
+        m.reset_current_evidence()
 
         return 'OK'
 
