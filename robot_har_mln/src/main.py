@@ -4,10 +4,16 @@ import os
 import threading
 
 from pracmln import MLN, Database, MLNQuery
+from pracmln.utils import config, locs
+from pracmln.utils.project import PRACMLNConfig
+from pracmln.utils.config import global_config_filename
+from pracmln.mlnlearn import MLNLearn
 import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pickle
+
+from yaml import events
 
 import rospy
 import rospkg
@@ -62,17 +68,29 @@ class Main():
 
         # Loads
         self.create_pred_store()
-        self.load_mlns()
-        self.load_global_train_dbs()
         self.load_constants_and_percepts()
+        self.create_default_mlns()
+        self.init_percepts()
+        self.load_global_train_dbs()
+        self.train_mlns()
 
     # Init. Methods
+
+    def create_default_mlns(self):
+        self.mln_h = MLN(grammar='StandardGrammar', logic='FirstOrderLogic')
+        self.mln_s = MLN(grammar='StandardGrammar', logic='FirstOrderLogic')
+
+        self.init_mlns(default_rules=True)
+
+        self.save_mlns()
+
+        self.reset_current_evidence()
 
     def create_mlns(self, name):
         self.mln_prefix = name
 
-        self.mln_h = MLN(grammar='StandardGrammar', logic='FuzzyLogic')
-        self.mln_s = MLN(grammar='StandardGrammar', logic='FuzzyLogic')
+        self.mln_h = MLN(grammar='StandardGrammar', logic='FirstOrderLogic')
+        self.mln_s = MLN(grammar='StandardGrammar', logic='FirstOrderLogic')
 
         self.init_mlns()
 
@@ -85,11 +103,11 @@ class Main():
         self.reset_current_evidence()
 
     def create_restricted_train_dbs(self):
-        restricted_train_db_h = [["header"]]
+        restricted_train_db_h = []
         path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_h.p'
         pickle.dump(restricted_train_db_h, open(path, 'wb'))
 
-        restricted_train_db_s = [["header"]]
+        restricted_train_db_s = []
         path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_s.p'
         pickle.dump(restricted_train_db_s, open(path, 'wb'))
 
@@ -114,16 +132,22 @@ class Main():
         event_path = base_path + 'event.txt'
         percept_path = base_path + 'percept.txt'
         predicate_path = base_path + 'predicate.txt'
+        rules_h_path = base_path + 'rules_h.txt'
+        rules_s_path = base_path + 'rules_s.txt'
 
         activity_file = open(activity_path, 'r')
         event_file = open(event_path, 'r')
         percept_file = open(percept_path, 'r')
-        predicate_path = open(predicate_path, 'r')
+        predicate_file = open(predicate_path, 'r')
+        rules_h_file = open(rules_h_path, 'r')
+        rules_s_file = open(rules_s_path, 'r')
 
         self.events = []
         self.percepts = []
         self.activities = []
         self.predicates = []
+        self.rules_h = []
+        self.rules_s = []
 
         for line in activity_file:
             self.activities.append(line.rstrip('\n'))
@@ -134,14 +158,16 @@ class Main():
         for line in percept_file:
             self.percepts.append(line.rstrip('\n'))
 
-        for line in predicate_path:
+        for line in predicate_file:
             self.predicates.append(line.rstrip('\n'))
 
-        self.init_percepts()
+        for line in rules_h_file:
+            self.rules_h.append(line.rstrip('\n'))
 
-    def init_mlns(self):
-        print(self.activities, self.events, self.predicates, self.percepts)
+        for line in rules_s_file:
+            self.rules_s.append(line.rstrip('\n'))
 
+    def init_mlns(self, default_rules=False):
         activity_str = 'activity = {'
         for activity in self.activities:
             activity_str = activity_str + activity + ','
@@ -175,21 +201,28 @@ class Main():
             if predicate == '#fuzzy':
                 is_fuzzy = True
 
+        if default_rules:
+            for rule in self.rules_h:
+                self.mln_h << rule
+            for rule in self.rules_s:
+                self.mln_s << rule
+
         self.print_mlns()
 
     def load_mlns(self):
         path = self.rel_path + '/src/MLNs/' + self.mln_prefix + '_MLN_h.mln'
-        self.mln_h = MLN.load(files=path, grammar='StandardGrammar', logic='FuzzyLogic')
+        self.mln_h = MLN.load(files=path, grammar='StandardGrammar', logic='FirstOrderLogic')
 
         path = self.rel_path + '/src/MLNs/' + self.mln_prefix + '_MLN_s.mln'
-        self.mln_s = MLN.load(files=path, grammar='StandardGrammar', logic='FuzzyLogic')
-
-        self.db_h = Database(self.mln_h)
-        self.db_s = Database(self.mln_s)
+        self.mln_s = MLN.load(files=path, grammar='StandardGrammar', logic='FirstOrderLogic')
         
+        self.load_restricted_train_dbs()
         self.reset_current_evidence()
 
     def init_percepts(self):
+        self.db_h = Database(self.mln_h)
+        self.db_s = Database(self.mln_s)
+
         for per in self.percepts:
             predicate = 'involves_percept(A,' + per + ')'
             self.db_h << predicate
@@ -248,7 +281,6 @@ class Main():
         self.mln_prefix = name
 
         self.load_mlns()
-        self.load_restricted_train_dbs()
 
     def ros_add_rule_start_callback(self, msg):
         self.mode = 'train'
@@ -329,16 +361,18 @@ class Main():
         path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_s.p'
         pickle.dump(self.restricted_train_db_s, open(path, 'wb'))
 
+    def print_train_dbs(self):
+        print('[INFO] * * * global_train_db_h * * *')
+        print(self.global_train_db_h)
+        print('[INFO] * * * global_train_db_s * * *')
+        print(self.global_train_db_s)
+
     def save_rule(self, label):
         rule_str = '0.0 '
         for event in self.ps['events']:
-            rule_str = rule_str + event
+            rule_str = rule_str + event[0] + '(a,' + event[1] + ')'
             rule_str = rule_str + ' ^ '
         rule_str = rule_str.rstrip(' ^ ')
-
-        for percept in self.ps['percepts']:
-            rule_str = rule_str + ' ^ '
-            rule_str = rule_str + percept
         
         rule_str = rule_str + ' => ' + 'class(a,' + label + ')'
         
@@ -347,33 +381,54 @@ class Main():
         self.mln_h << rule_str
         self.mln_s << rule_str
 
+        if len(self.ps['percepts']) > 0:
+            rule_str = '0.0 '
+            for percept in self.ps['percepts']:
+                rule_str = rule_str + percept[0] + '(a,' + percept[1] + ')'
+                rule_str = rule_str + ' ^ '
+            rule_str = rule_str.rstrip(' ^ ')
+
+            rule_str = rule_str + ' => ' + 'class(a,' + label + ')'
+
+            print(rule_str)
+
+            self.mln_s << rule_str
+
         self.print_mlns()
 
         self.save_mlns()
 
         # Update training evidence DB
-        self.global_train_db_h.append(self.ps['events'])
-        self.restricted_train_db_h.append(self.ps['events'])
+        evidence_and_label = [self.ps['events'], label]
+        self.global_train_db_h.append(evidence_and_label)
+        self.restricted_train_db_h.append(evidence_and_label)
 
         events_and_percepts = self.ps['events'] + self.ps['percepts']
-        self.global_train_db_s.append(events_and_percepts)
-        self.restricted_train_db_s.append(events_and_percepts)
+        evidence_and_label = [events_and_percepts, label]
+        self.global_train_db_s.append(evidence_and_label)
+        self.restricted_train_db_s.append(evidence_and_label)
+
+        self.print_train_dbs()
 
         self.save_train_dbs()
 
         self.create_pred_store()
     
     def reset_current_evidence(self):
-        del self.db_h
-        del self.db_s
-        del self.ps
+        try:
+            del self.db_h
+            del self.db_s
+            del self.ps
+        except:
+            print('[INFO] Current evidence DBs have not yet be created, they will now be created.')
 
         self.db_h = Database(self.mln_h)
         self.db_s = Database(self.mln_s)
 
         self.load_constants_and_percepts()
+        self.init_percepts()
         self.create_pred_store()
-        print('[API]', 'Reset.')
+        print('[MLN]', 'Reset.')
 
     def evidence(self):
         e_preds = []
@@ -400,7 +455,7 @@ class Main():
         
         winner = np.argmax(probs)
         
-        print('[API]', self.activities[winner], probs[winner])
+        print('[MLN]', self.activities[winner], probs[winner])
         return self.activities[winner], probs[winner]
 
     def add(self, evidence, etype):
@@ -409,16 +464,20 @@ class Main():
         if self.valid_pred(evidence, etype):
             self.add_pred(evidence, etype)
         else:
-            print('[API] Invalid evidence type or invalid predicate. Valid types are: event or percept')
+            print('[MLN] Invalid evidence type or invalid predicate. Valid types are: event or percept')
 
-        print('[API]', resp)
+        print('[MLN]', resp)
         return resp
 
     def add_pred(self, evidence, etype):
+        # if etype == 'event':
+        #     pred = 'involves_event(a,' + evidence + ')'
+        # elif etype == 'percept':
+        #     pred = 'involves_percept(a,' + evidence + ')'
         if etype == 'event':
-            pred = 'involves_event(a,' + evidence + ')'
+            pred = ("involves_event", evidence)
         elif etype == 'percept':
-            pred = 'involves_percept(a,' + evidence + ')'
+            pred = ("involves_percept", evidence)
 
         if self.mode == 'train':
             if etype == 'event':
@@ -461,11 +520,123 @@ class Main():
         else:
             resp = 'Invalid evidence type. Valid types are: event or percept' 
 
-        print('[API]', resp)
+        print('[MLN]', resp)
         return resp
 
     def train_mlns(self):
-        pass
+        # Train H
+        path_h = self.rel_path + '/src/temp/train_mln_h.txt'
+        file = open(path_h, 'w')
+
+        for i in range(0, len(self.global_train_db_h)):
+            for event in self.global_train_db_h[i][0]:
+                evidence = event[0] + '(S,' + event[1] + ')'
+                file.write(evidence + '\n')
+            evidence_label = 'class(S,' + self.global_train_db_h[i][1] + ')'
+            file.write(evidence_label + '\n')
+            file.write('---' + '\n')
+
+        file.close()
+
+        train_db_h = Database.load(self.mln_h, path_h)
+        # train_db_h.write()
+
+        # TODO: Deal with self.global_train_db_s
+
+        DEFAULT_CONFIG = os.path.join(locs.user_data, global_config_filename)
+        conf = PRACMLNConfig(DEFAULT_CONFIG)
+
+        config = {}
+        config['verbose'] = True
+        config['discr_preds'] = 0
+        config['db'] = train_db_h
+        config['mln'] = self.mln_h
+        config['ignore_zero_weight_formulas'] = 0
+        config['ignore_unknown_preds'] = False
+        config['incremental'] = 1
+        config['grammar'] = 'StandardGrammar'
+        config['logic'] = 'FirstOrderLogic'
+        config['method'] = 'pseudo-log-likelihood'
+        config['optimizer'] = 'bfgs'
+        config['multicore'] = False
+        config['profile'] = 0
+        config['shuffle'] = 0
+        config['prior_mean'] = 0
+        config['prior_stddev'] = 5
+        config['save'] = True
+        config['use_initial_weights'] = 0
+        config['use_prior'] = 0
+
+        config['infoInterval'] = 500
+        config['resultsInterval'] = 1000
+        conf.update(config)
+
+        print('[MLN] Training...')
+        learn = MLNLearn(conf, mln=self.mln_h, db=train_db_h)
+
+        self.mln_h = learn.run()
+
+        # Train S
+
+        path_s = self.rel_path + '/src/temp/train_mln_s.txt'
+        file = open(path_s, 'w')
+
+        for i in range(0, len(self.global_train_db_s)):
+            for event_percept in self.global_train_db_s[i][0]:
+                evidence = event_percept[0] + '(S,' + event_percept[1] + ')'
+                file.write(evidence + '\n')
+            evidence_label = 'class(S,' + self.global_train_db_s[i][1] + ')'
+            file.write(evidence_label + '\n')
+            file.write('---' + '\n')
+
+        file.close()
+
+        train_db_s = Database.load(self.mln_s, path_s)
+
+        for per in self.percepts:
+            predicate = 'involves_percept(S,' + per + ')'
+            self.db_h << predicate
+            self.db_h[predicate] = 0.0
+            self.db_s << predicate
+            self.db_s[predicate] = 0.0
+
+        DEFAULT_CONFIG = os.path.join(locs.user_data, global_config_filename)
+        conf = PRACMLNConfig(DEFAULT_CONFIG)
+
+        config = {}
+        config['verbose'] = True
+        config['discr_preds'] = 0
+        config['db'] = train_db_s
+        config['mln'] = self.mln_s
+        config['ignore_zero_weight_formulas'] = 0
+        config['ignore_unknown_preds'] = False
+        config['incremental'] = 1
+        config['grammar'] = 'StandardGrammar'
+        config['logic'] = 'FirstOrderLogic'
+        config['method'] = 'pseudo-log-likelihood'
+        config['optimizer'] = 'bfgs'
+        config['multicore'] = False
+        config['profile'] = 0
+        config['shuffle'] = 0
+        config['prior_mean'] = 0
+        config['prior_stddev'] = 5
+        config['save'] = True
+        config['use_initial_weights'] = 0
+        config['use_prior'] = 0
+
+        config['infoInterval'] = 500
+        config['resultsInterval'] = 1000
+        conf.update(config)
+
+        print('[MLN] Training...')
+        learn = MLNLearn(conf, mln=self.mln_s, db=train_db_s)
+
+        self.mln_s = learn.run()
+
+        self.print_mlns()
+    
+        print('[MLN] Finished training.')
+        
 
     # Additional Logic
 

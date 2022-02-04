@@ -1,0 +1,17 @@
+involves_event(S,Kettle)
+involves_event(S,DrinkwareCabinet)
+class(S,PreparingDrink)
+---
+involves_event(S,Oven)
+involves_event(S,DinnerwareCabinet)
+class(S,Cooking)
+---
+involves_percept(S,Cup)
+involves_event(S,DrinkwareCabinet)
+class(S,PreparingDrink)
+---
+involves_event(S,DrinkwareCabinet)
+involves_event(S,Kettle)
+involves_percept(S,Cup)
+class(S,PreparingDrink)
+---
