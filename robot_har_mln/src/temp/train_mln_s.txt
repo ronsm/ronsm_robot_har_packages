@@ -15,3 +15,7 @@ involves_event(S,Kettle)
 involves_percept(S,Cup)
 class(S,PreparingDrink)
 ---
+involves_event(S,DrinkwareCabinet)
+involves_event(S,Kettle)
+class(S,PreparingDrink)
+---

@@ -10,3 +10,7 @@ involves_event(S,DrinkwareCabinet)
 involves_event(S,Kettle)
 class(S,PreparingDrink)
 ---
+involves_event(S,DrinkwareCabinet)
+involves_event(S,Kettle)
+class(S,FoodDrink)
+---

@@ -1,6 +1,1 @@
-0.0 involves_event(a, Kettle) => class(a, PreparingDrink)
-0.0 involves_event(a, Kettle) ^ involves_event(a, Tap) ^ involves_event(a, DrinkwareCabinet) => class(a, PreparingDrink)
-0.0 involves_event(a, DrinkwareCabinet) ^ (involves_event(a, Tap) v involves_event(a, Fridge)) => class(a, PreparingDrink)
-0.0 involves_event(a, DinnerwareCabinet) ^ involves_event(a, CutleryDrawer) ^ involves_event(a, Oven) ^ involves_event(a, FoodCabinet) => class(a, Cooking)
-0.0 involves_event(a, DinnerwareCabinet) ^ involves_event(a, CutleryDrawer) ^ (involves_event(a, Fridge) v involves_event(a, FoodCabinet)) => class(a, Cooking)
-0.0 involves_event(a, Tap) ^ involves_event(a, Bin) => class(a, WashingDishes)
+0.0 involves_event(a,Kettle) => class(a,FoodDrink)

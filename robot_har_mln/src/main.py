@@ -12,8 +12,7 @@ import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pickle
-
-from yaml import events
+import yaml
 
 import rospy
 import rospkg
@@ -26,6 +25,8 @@ from ronsm_messages.msg import har_simple_evidence
 from ronsm_messages.msg import har_reset
 from ronsm_messages.msg import har_evidence_list
 import ronsm_messages.msg
+
+from adl_hierarchy_helper import ADLHierarchyHelper
 
 etypes = ['event', 'percept']
 
@@ -43,6 +44,9 @@ class Main():
         # ROSPack Path
         rospack = rospkg.RosPack()
         self.rel_path = rospack.get_path('robot_har_mln')
+
+        # ADL Hierarchy Helper
+        self.adlhh = ADLHierarchyHelper(self.rel_path)
 
         # MLN Name
         self.mln_prefix = 'default'
@@ -128,14 +132,14 @@ class Main():
     def load_constants_and_percepts(self):
         base_path = self.rel_path + '/src/MLNs/common/'
 
-        activity_path = base_path + 'activity.txt'
+        self.action_name
+
         event_path = base_path + 'event.txt'
         percept_path = base_path + 'percept.txt'
         predicate_path = base_path + 'predicate.txt'
         rules_h_path = base_path + 'rules_h.txt'
         rules_s_path = base_path + 'rules_s.txt'
 
-        activity_file = open(activity_path, 'r')
         event_file = open(event_path, 'r')
         percept_file = open(percept_path, 'r')
         predicate_file = open(predicate_path, 'r')
@@ -144,13 +148,9 @@ class Main():
 
         self.events = []
         self.percepts = []
-        self.activities = []
         self.predicates = []
         self.rules_h = []
         self.rules_s = []
-
-        for line in activity_file:
-            self.activities.append(line.rstrip('\n'))
 
         for line in event_file:
             self.events.append(line.rstrip('\n'))
@@ -168,11 +168,18 @@ class Main():
             self.rules_s.append(line.rstrip('\n'))
 
     def init_mlns(self, default_rules=False):
+        # H
         activity_str = 'activity = {'
-        for activity in self.activities:
+        for activity in self.adlhh.get_parents():
             activity_str = activity_str + activity + ','
         activity_str = activity_str.rstrip(',') + '}'
         self.mln_h << activity_str
+        
+        # S
+        activity_str = 'activity = {'
+        for activity in self.adlhh.get_children():
+            activity_str = activity_str + activity + ','
+        activity_str = activity_str.rstrip(',') + '}'
         self.mln_s << activity_str
 
         event_str = 'event = {'
@@ -368,18 +375,20 @@ class Main():
         print(self.global_train_db_s)
 
     def save_rule(self, label):
+        label_s = label
+        label_h = self.adlhh.get_parent(label_s)
+
         rule_str = '0.0 '
         for event in self.ps['events']:
             rule_str = rule_str + event[0] + '(a,' + event[1] + ')'
             rule_str = rule_str + ' ^ '
         rule_str = rule_str.rstrip(' ^ ')
         
-        rule_str = rule_str + ' => ' + 'class(a,' + label + ')'
-        
-        # Logic to find hl activity
+        rule_str_h = rule_str + ' => ' + 'class(a,' + label_h + ')'
+        rule_str_s = rule_str + ' => ' + 'class(a,' + label_s + ')'
 
-        self.mln_h << rule_str
-        self.mln_s << rule_str
+        self.mln_h << rule_str_h
+        self.mln_s << rule_str_s
 
         if len(self.ps['percepts']) > 0:
             rule_str = '0.0 '
@@ -388,23 +397,21 @@ class Main():
                 rule_str = rule_str + ' ^ '
             rule_str = rule_str.rstrip(' ^ ')
 
-            rule_str = rule_str + ' => ' + 'class(a,' + label + ')'
+            rule_str_s = rule_str + ' => ' + 'class(a,' + label_s + ')'
 
-            print(rule_str)
-
-            self.mln_s << rule_str
+            self.mln_s << rule_str_s
 
         self.print_mlns()
 
         self.save_mlns()
 
         # Update training evidence DB
-        evidence_and_label = [self.ps['events'], label]
+        evidence_and_label = [self.ps['events'], label_h]
         self.global_train_db_h.append(evidence_and_label)
         self.restricted_train_db_h.append(evidence_and_label)
 
         events_and_percepts = self.ps['events'] + self.ps['percepts']
-        evidence_and_label = [events_and_percepts, label]
+        evidence_and_label = [events_and_percepts, label_s]
         self.global_train_db_s.append(evidence_and_label)
         self.restricted_train_db_s.append(evidence_and_label)
 

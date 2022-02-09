@@ -4,7 +4,7 @@
 
         <pattern>LOAD AIML GO</pattern>
         <template>
-            <learn>AIML/main.aiml</learn>
+            <learn>/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_dialogue_system/src/AIML/main.aiml</learn>
         </template>
 
     </category>

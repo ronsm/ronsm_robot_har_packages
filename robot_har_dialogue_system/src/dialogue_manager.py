@@ -3,6 +3,7 @@
 import aiml
 from log import Log
 import responder
+import rospkg
 
 from responder import Responder
 from semantic_similarity import SemanticSimilarity
@@ -23,8 +24,12 @@ class DialogueManager(object):
 
         self.label_linker = label_linker
 
+        rospack = rospkg.RosPack()
+        self.rel_path = rospack.get_path('robot_har_dialogue_system')
+
         self.aiml = aiml.Kernel()
-        self.aiml.learn('std-startup.xml')
+        aiml_path = self.rel_path + '/src/std-startup.xml'
+        self.aiml.learn(aiml_path)
         self.aiml.respond('load aiml go')
 
         self.responder = Responder()
