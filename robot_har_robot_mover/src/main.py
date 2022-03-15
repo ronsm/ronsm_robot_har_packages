@@ -72,6 +72,5 @@ class Main():
                 self.logger.log('Still moving...')
                 rospy.sleep(2)
 
-
 if __name__ == '__main__':
     m = Main()

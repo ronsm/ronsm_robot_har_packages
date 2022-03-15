@@ -90,10 +90,12 @@ class ADLRuleModeller():
 
     # Pro-Activity
 
-    def evaluate_rules(self, ADL, room):
+    def evaluate_rules(self, predictions_h, predictions_s, room):
+        adl = predictions_s[-1][0]
+
         first = True
         for entry in self.rules_file['sequences']:
-            if entry.when == ADL:
+            if entry.when == adl:
                 if first:
                     if entry.do == 'WATCH':
                         log = 'Sending robot to room: ' + room + ' to WATCH user while: ' + entry.when

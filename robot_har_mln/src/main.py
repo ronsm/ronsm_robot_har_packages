@@ -21,6 +21,7 @@ import actionlib
 from adl_hierarchy_helper import ADLHierarchyHelper
 from adl_sequence_modeller import ADLSequenceModeller
 from adl_rule_modeller import ADLRuleModeller
+from query_selection import QuerySelection
 from log import Log
 
 from std_msgs import msg
@@ -66,6 +67,7 @@ class Main():
         self.rel_path = rospack.get_path('robot_har_mln')
 
         # Helper Classes
+        self.qs = QuerySelection()
         self.adlhh = ADLHierarchyHelper(self.rel_path)
         if RESET:
             self.asm = ADLSequenceModeller(self.rel_path, reset=True)
@@ -94,7 +96,8 @@ class Main():
         self.mln_prefix = 'default'
 
         # Predictions
-        self.predictions = []
+        self.predictions_h = []
+        self.predictions_s = []
 
         # Segmentation
         self.room_e_history = []
@@ -127,7 +130,6 @@ class Main():
 
         # ROS Publishers
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/db/evidence', har_evidence_list, queue_size=10)
-        self.pub_dm_request = rospy.Publisher('/robot_har_dialogue_system/system_request', dm_system_request, queue_size=10)
         
         # ROS Action Servers
         self.action_name = 'robot_har_mln/har_reason'
@@ -271,11 +273,11 @@ class Main():
                 self.decay()
                 self.ros_publish()
                 if self.predict_next_cycle:
-                    pred_s, conf_s = self.reason()
-                    self.arm.evaluate_rules(pred_s, self.room_e_history[-1])
-                    query, args = self.query_select()
+                    self.reason()
+                    self.arm.evaluate_rules(self.predictions_h, self.predictions_s, self.room_e_history[-1])
+                    query, args = self.qs.query_select(self.predictions_h, self.predictions_s)
                     if query:
-                        self.label_query(args)
+                        self.qs.label_query(args)
                     self.predict_next_cycle = False
                 rospy.rostime.wallsleep(0.5)
             
@@ -450,6 +452,7 @@ class Main():
         self.load_global_train_dbs()
     
     def reset_working_memory(self):
+        # DBs
         try:
             del self.db_h
             del self.db_s
@@ -460,6 +463,18 @@ class Main():
         self.db_h = Database(self.mln_h)
         self.db_s = Database(self.mln_s)
 
+        # Predictions
+        self.predictions_h = []
+        self.predictions_s = []
+
+        # Segmentation
+        self.room_e_history = []
+        self.room_p_history = []
+        self.pred_e_history = []
+        self.pred_p_history = []
+        self.last_add = None
+
+        # Loads
         self.load_constants_and_percepts()
         self.init_groundings()
         self.create_pred_store()
@@ -476,10 +491,8 @@ class Main():
         return e_preds, e_confs
 
     def reason(self):
-        pred_h, conf_h = self.reason_h()
-        pred_s, conf_s = self.reason_s()
-
-        return pred_s, conf_s
+        self.reason_h()
+        self.reason_s()
 
     def reason_h(self):
         result = MLNQuery(mln=self.mln_h, db=self.db_h, method='MC-SAT').run() # EnumerationAsk
@@ -496,17 +509,15 @@ class Main():
         
         winner = np.argmax(probs)
 
-        children = self.adlhh.get_parents()
+        parents = self.adlhh.get_parents()
         self.logger.log_mini_header('Query Results (H)')
         for i in range(0, len(probs)):
-            msg = '(' + children[i] + ',' + str(probs[i]) + ')'
+            msg = '(' + parents[i] + ',' + str(probs[i]) + ')'
             self.logger.log(msg)
-        msg = 'Prediction (H): (' + children[winner] + ',' + str(probs[winner]) + ')'
+        msg = 'Prediction (H): (' + parents[winner] + ',' + str(probs[winner]) + ')'
         self.logger.log_great(msg)
 
-        self.predictions.append((children[winner], probs[winner]))
-
-        return children[winner], probs[winner]
+        self.predictions_h.append((parents[winner], probs[winner], parents, probs))
     
     def reason_s(self):
         result = MLNQuery(mln=self.mln_s, db=self.db_s, method='MC-SAT').run() # EnumerationAsk
@@ -531,9 +542,7 @@ class Main():
         msg = 'Prediction (S): (' + children[winner] + ',' + str(probs[winner]) + ')'
         self.logger.log_great(msg)
 
-        self.predictions.append((children[winner], probs[winner]))
-
-        return children[winner], probs[winner]
+        self.predictions_s.append((children[winner], probs[winner], children, probs))
 
     def add(self, evidence, etype, room):
         resp = 'OK. Attempting to add: (' + etype + ',' + evidence + ')'
@@ -676,25 +685,6 @@ class Main():
     
         self.logger.log('Finished training.')
 
-    # Querying
-
-    def query_select(self):
-        if len(self.predictions) < 3:
-            return False, None
-        else:
-            if (self.predictions[-2][0] == self.predictions[-3][0]) and (self.predictions[-2][0] != self.predictions[-1][0]):
-                return True, [self.predictions[-1][0], self.predictions[-2][0]]
-            else:
-                return False, None
-
-    def label_query(self, options):
-        msg = dm_system_request()
-        msg.intent = 'har_adl_label_query'
-        msg.args = options
-        msg = 'Issuing query via dialogue system:' + str(options)
-        self.logger.log_great(msg)
-        self.pub_dm_request.publish(msg)
-
     # Additional Logic
 
     def decay(self):
@@ -777,5 +767,9 @@ if __name__ == '__main__':
         status = 'OK'
 
         return jsonify(status)
+
+    @app.route('/')
+    def hello_world():
+        return '[robot_har_mln] Online.'
 
     app.run(host='0.0.0.0', port = 5010)
