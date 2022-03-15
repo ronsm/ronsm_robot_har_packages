@@ -1,16 +1,23 @@
 #! /usr/bin/env python3
 import yaml
 
+from log import Log
+
 class ADLHierarchyHelper():
     def __init__(self, rel_path):
+        self.id = 'adl_hierarchy_helper'
+        self.logger = Log(self.id)
+
         self.rel_path = rel_path
 
-        adl_path = self.rel_path + '/src/MLNs/common/adls.yaml'
+        adl_path = self.rel_path + '/src/KBs/adls.yaml'
         with open(adl_path, 'r') as stream:
             try:
                 self.adls = yaml.safe_load(stream)
             except yaml.YAMLError as exc:
                 print(exc)
+
+        self.logger.log_great('Ready.')
 
     def get_parents(self):
         parents = []
@@ -31,6 +38,9 @@ class ADLHierarchyHelper():
             for c in self.adls[p]:
                 if c == child:
                     return p
+
+    def get_all(self):
+        return self.get_parents + self.get_children
 
 if __name__ == '__main__':
     adlhh = ADLHierarchyHelper('/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln')

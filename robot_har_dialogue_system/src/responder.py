@@ -27,7 +27,7 @@ class Responder(object):
         
         self.io.say(choice)
 
-    # Dynamic
+    # HAR Query
 
     def query_1_label(self, confirmation_label):
         choices = []
@@ -81,6 +81,52 @@ class Responder(object):
         msg = 'Ok, I have recorded that you are ' + label + '.'
         choices.append(msg)
         msg = 'I have noted that you are ' + label + '.'
+        choices.append(msg)
+
+        choice = np.random.choice(choices)
+
+        self.io.say(choice)
+
+# User Intent Responses
+
+    def start_teaching_adl(self):
+        choices = []
+
+        choices.append('Ok, I am ready to learn your activity. Begin when you are ready.')
+        choices.append('Sure, I can learn your activity. Start whenever you are ready.')
+        
+        choice = np.random.choice(choices)
+
+        self.io.say(choice)
+
+    def stop_teaching_adl(self):
+        choices = []
+
+        msg = 'Ok, I am done learning your activity.'
+        choices.append(msg)
+        msg = 'Great, I have learned your activity.'
+        choices.append(msg)
+        
+        choice = np.random.choice(choices)
+
+        self.io.say(choice)
+
+    def query_3_labels_teaching(self):
+        choices = []
+
+        choices.append('Can you confirm for me what this activity was?')
+        choices.append('Just to make sure I have this right, can you tell me what it was you were just doing?')
+
+        choice = np.random.choice(choices)
+
+        self.io.say(choice)
+
+    def confirm_monitor_rule(self, when, do):
+        choices = []
+
+        msg = 'Ok, I will ' + do + ' when they are ' + when
+        choices.append(msg)
+        msg = 'Sure, I can do that when they are ' + when
         choices.append(msg)
 
         choice = np.random.choice(choices)

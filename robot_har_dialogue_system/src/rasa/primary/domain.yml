@@ -1,7 +1,10 @@
 version: "2.0"
 
 intents:
-  - har_initiate_adl_query
+  - start_teaching_adl
+  - end_teaching_adl
+  - register_marker
+  - look_at_marker
   - goodbye
 
 session_config:

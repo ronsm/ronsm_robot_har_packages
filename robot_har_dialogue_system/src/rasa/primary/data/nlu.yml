@@ -1,13 +1,40 @@
 version: "2.0"
 
 nlu:
-- intent: har_initiate_adl_query
+- intent: start_teaching_adl
   examples: |
-    - har_initiate_adl_query
-    - har initiate adl query
-    - i would like to initiate a har adl query
-
+    - i would like to show you how i do [activity]{"entity": "activity", "value": "activity"}
+    - let me show you how i [activity]{"entity": "activity", "value": "activity"}
+    - i'd like to teach you how i [activity]{"entity": "activity", "value": "activity"}
+- intent: end_teaching_adl
+  examples: |
+    - i am done showing you how i [activity]{"entity": "activity", "value": "activity"}
+    - i'm finished teaching you
+    - i'm finished teaching you how i [activity]{"entity": "activity", "value": "activity"}
+    - i'm done teaching
+    - i've finished teaching you
+- intent: register_marker
+  examples: |
+    - i want to register a marker for you to look at
+    - let me register a marker
+    - i'd like to register a marker
+- intent: look_at_marker
+  examples: |
+    - ok i have placed the marker
+    - i've placed the marker
+    - the marker is ready
+    - i want you to look at the teaching marker
+    - look at the marker
+    - you can look at the marker now
+    - watch where the marker is
 - intent: goodbye
   examples: |
     - goodbye
     - bye
+- intent: create_adl_monitoring_rule
+  examples: |
+    - i want you to watch bob while he does [activity]
+    - can you watch jack while he does [activity]
+    - pleaase can you watch victor while he [activity]
+    - make sure that you watch isa while she does [activity]
+    - when isa is [activity] can you watch her for me

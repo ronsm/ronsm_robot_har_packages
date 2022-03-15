@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from aiohttp import request
 import rospy
 import rospkg
 from rasa.nlu.model import Interpreter
@@ -7,10 +8,14 @@ from dialogue_manager import DialogueManager
 from label_linker import LabelLinker
 from log import Log
 from input_output import InputOutput
+from har_interface import HARInterface
+from responder import Responder
 
 from ronsm_messages.msg import dm_system_request
 
-har_initiate_adl_query_intents = ["har_initiate_adl_query"]
+har_initiate_adl_query_intents = ['har_adl_label_query']
+
+rasa_primary_model = 'nlu-20220311-132404'
 
 class Main():
     def __init__(self):
@@ -26,8 +31,10 @@ class Main():
         self.dialogue_manager = DialogueManager(self.label_linker)
 
         self.io = InputOutput()
+        self.hi = HARInterface()
+        self.responder = Responder()
 
-        primary_interp_path = self.rospack.get_path('robot_har_dialogue_system') + '/src/rasa/primary/models/nlu-20220112-152946/nlu'
+        primary_interp_path = self.rospack.get_path('robot_har_dialogue_system') + '/src/rasa/primary/models/' + rasa_primary_model + '/nlu'
         self.primary_interp = Interpreter.load(primary_interp_path)
 
         rospy.init_node('robot_har_dialogue_system')
@@ -35,7 +42,16 @@ class Main():
 
         self.logger.log_great('Ready.')
 
-        rospy.spin()
+        self.spin()
+
+# Spin
+
+    def spin(self):
+        while not rospy.is_shutdown():
+            request = input()
+            # request = self.io.listen() # enable this to get input from microphone instead of keyboard
+            self.process_user_request(request)
+            rospy.sleep(0.5)
 
 # Process Requests (System & User)
 
@@ -47,11 +63,27 @@ class Main():
     def process_user_request(self, text):
         result = self.primary_interp.parse(text)
         intent = result['intent']['name']
-        print(result['intent']['name'])
+        print(result)
+        
+        if intent == 'start_teaching_adl':
+            self.hi.start_teaching_adl()
+            self.responder.start_teaching_adl()
+        elif intent == 'end_teaching_adl':
+            self.hi.stop_teaching_adl()
+            self.responder.stop_teaching_adl()
+            label = self.dialogue_manager.story_query_all_labels_teaching()
+            if label != '':
+                self.hi.label_teaching_adl(label)
+        elif intent == 'register_marker':
+            self.hi.register_marker()
+        elif intent == 'look_at_marker':
+            self.hi.look_at_marker()
+        elif intent == 'create_adl_monitoring_rule':
+            self.dialogue_manager.respond_to_input(text)
+        else:
+            self.logger.log_warn('Invalid intent. Disregarding input.')
 
-        if intent in har_initiate_adl_query_intents:
-            self.lock = 1
-            self.dialogue_manager.start_query()
+        # print(result)
 
 # ROS Callbacks
 

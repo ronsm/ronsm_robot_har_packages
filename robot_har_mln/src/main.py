@@ -18,65 +18,123 @@ import rospy
 import rospkg
 import actionlib
 
+from adl_hierarchy_helper import ADLHierarchyHelper
+from adl_sequence_modeller import ADLSequenceModeller
+from adl_rule_modeller import ADLRuleModeller
+from log import Log
+
 from std_msgs import msg
 from std_msgs.msg import String
 
 from ronsm_messages.msg import har_simple_evidence
 from ronsm_messages.msg import har_reset
 from ronsm_messages.msg import har_evidence_list
+from ronsm_messages.msg import dm_system_request
+from ronsm_messages.msg import har_arm_basic
 import ronsm_messages.msg
 
-from adl_hierarchy_helper import ADLHierarchyHelper
-
 etypes = ['event', 'percept']
+
+RESET = False
 
 class Main():
     _ros_reason_feedback = ronsm_messages.msg.har_reasonFeedback()
     _ros_reason_result = ronsm_messages.msg.har_reasonResult()
     
     def __init__(self):
+        self.id = 'main'
+        self.logger = Log(self.id)
+
+        self.logger.startup_msg()
+
+        if RESET:
+            self.logger.log_warn('WARNNG: The global reset flag is set to true. This will reset the HAR system and clear the default evidence database.')
+            if input('Are you sure you wish to continue? (y/n)') != 'y':
+                self.logger.log_warn('Exiting...')
+                exit()
+
         rospy.init_node('robot_har_mln', disable_signals=True)
 
         # Modes
         self.mode = 'predict' # default is predict
-        self.train_mode = 'global'
+
+        # Async. Variables
+        self.predict_next_cycle = False
 
         # ROSPack Path
         rospack = rospkg.RosPack()
         self.rel_path = rospack.get_path('robot_har_mln')
 
-        # ADL Hierarchy Helper
+        # Helper Classes
         self.adlhh = ADLHierarchyHelper(self.rel_path)
+        if RESET:
+            self.asm = ADLSequenceModeller(self.rel_path, reset=True)
+            self.arm = ADLRuleModeller(self.rel_path, reset=True)
+        else:
+            self.asm = ADLSequenceModeller(self.rel_path, reset=False)
+            self.arm = ADLRuleModeller(self.rel_path, reset=False)
+
+        # Reset Global DB
+        if RESET:
+            path = self.rel_path + '/src/DBs/global_DB_h.txt'
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+            open(path, 'a').close()
+
+            path = self.rel_path + '/src/DBs/global_DB_s.txt'
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+            open(path, 'a').close()
 
         # MLN Name
         self.mln_prefix = 'default'
+
+        # Predictions
+        self.predictions = []
+
+        # Segmentation
+        self.room_e_history = []
+        self.room_p_history = []
+        self.pred_e_history = []
+        self.pred_p_history = []
+        self.last_add = None
+
+        # Loads
+        self.create_pred_store()
+        self.load_constants_and_percepts()
+        self.create_default_mlns()
+        self.init_groundings()
+        self.load_global_train_dbs()
+        if RESET:
+            self.logger.log_warn('WARNING: The MLNs have not been trained. Predictions will be non-sensical until training data has been provided.')
+        else:
+            self.train_mlns()
+            self.save_mlns()
 
         # ROS Subscribers
         self.sub_sel_evidence = rospy.Subscriber('/ralt_semantic_event_publisher/simple', har_simple_evidence, callback=self.ros_evidence_callback)
         self.sub_ros_evidence = rospy.Subscriber('/robot_har_mln/db/add_delete', har_simple_evidence, callback=self.ros_evidence_callback)
         self.sub_ros_reset = rospy.Subscriber('/robot_har_mln/db/reset', har_reset, callback=self.ros_reset_callback)
-        self.sub_ros_new_mln = rospy.Subscriber('/robot_har_mln/mln/new', String, callback=self.ros_new_mln_callback)
-        self.sub_ros_load_mln = rospy.Subscriber('/robot_har_mln/mln/load', String, callback=self.ros_load_mln_callback)
         self.sub_ros_add_rule_start = rospy.Subscriber('/robot_har_mln/mln/new_rule_start', String, callback=self.ros_add_rule_start_callback)
         self.sub_ros_add_rule_stop = rospy.Subscriber('/robot_har_mln/mln/new_rule_stop', String, callback=self.ros_add_rule_stop_callback)
         self.sub_ros_add_rule_label = rospy.Subscriber('/robot_har_mln/mln/label', String, callback=self.ros_add_rule_label_callback)
-        self.pub_ros_mln_train = rospy.Subscriber('/robot_har_mln/mln/train', String, callback=self.ros_mln_train_callback)
+        self.sub_ros_mln_train = rospy.Subscriber('/robot_har_mln/mln/train', String, callback=self.ros_mln_train_callback)
+        self.sub_ros_arm_add_rule = rospy.Subscriber('/robot_har_mln/arm/add_rule', har_arm_basic, callback=self.arm.ros_add_rule_callback)
 
         # ROS Publishers
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/db/evidence', har_evidence_list, queue_size=10)
+        self.pub_dm_request = rospy.Publisher('/robot_har_dialogue_system/system_request', dm_system_request, queue_size=10)
         
         # ROS Action Servers
         self.action_name = 'robot_har_mln/har_reason'
         self._as = actionlib.SimpleActionServer(self.action_name, ronsm_messages.msg.har_reasonAction, execute_cb=self.ros_reason_callback)
         self._as.start()
 
-        # Loads
-        self.create_pred_store()
-        self.load_constants_and_percepts()
-        self.create_default_mlns()
-        self.init_percepts()
-        self.load_global_train_dbs()
-        self.train_mlns()
+        self.logger.log_great('Ready.')
 
     # Init. Methods
 
@@ -88,51 +146,17 @@ class Main():
 
         self.save_mlns()
 
-        self.reset_current_evidence()
-
-    def create_mlns(self, name):
-        self.mln_prefix = name
-
-        self.mln_h = MLN(grammar='StandardGrammar', logic='FirstOrderLogic')
-        self.mln_s = MLN(grammar='StandardGrammar', logic='FirstOrderLogic')
-
-        self.init_mlns()
-
-        self.save_mlns()
-
-        self.create_restricted_train_dbs()
-
-        self.load_restricted_train_dbs()
-
-        self.reset_current_evidence()
-
-    def create_restricted_train_dbs(self):
-        restricted_train_db_h = []
-        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_h.p'
-        pickle.dump(restricted_train_db_h, open(path, 'wb'))
-
-        restricted_train_db_s = []
-        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_s.p'
-        pickle.dump(restricted_train_db_s, open(path, 'wb'))
+        self.reset_working_memory()
 
     def load_global_train_dbs(self):
-        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_h.p'
-        self.global_train_db_h = pickle.load(open(path, 'rb'))
+        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_h.txt'
+        self.global_train_db_h = Database.load(self.mln_h, dbfiles=path)
 
-        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.p'
-        self.global_train_db_s = pickle.load(open(path, 'rb'))
-
-    def load_restricted_train_dbs(self):
-        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_h.p'
-        self.restricted_train_db_h = pickle.load(open(path, 'rb'))
-
-        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_s.p'
-        self.restricted_train_db_s = pickle.load(open(path, 'rb'))
+        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.txt'
+        self.global_train_db_s = Database.load(self.mln_s, dbfiles=path)
 
     def load_constants_and_percepts(self):
         base_path = self.rel_path + '/src/MLNs/common/'
-
-        self.action_name
 
         event_path = base_path + 'event.txt'
         percept_path = base_path + 'percept.txt'
@@ -216,22 +240,19 @@ class Main():
 
         self.print_mlns()
 
-    def load_mlns(self):
-        path = self.rel_path + '/src/MLNs/' + self.mln_prefix + '_MLN_h.mln'
-        self.mln_h = MLN.load(files=path, grammar='StandardGrammar', logic='FirstOrderLogic')
-
-        path = self.rel_path + '/src/MLNs/' + self.mln_prefix + '_MLN_s.mln'
-        self.mln_s = MLN.load(files=path, grammar='StandardGrammar', logic='FirstOrderLogic')
-        
-        self.load_restricted_train_dbs()
-        self.reset_current_evidence()
-
-    def init_percepts(self):
+    def init_groundings(self):
         self.db_h = Database(self.mln_h)
         self.db_s = Database(self.mln_s)
 
+        for event in self.events:
+            predicate = 'involves_event(S,' + event + ')'
+            self.db_h << predicate
+            self.db_h[predicate] = 0.0
+            self.db_s << predicate
+            self.db_s[predicate] = 0.0
+
         for per in self.percepts:
-            predicate = 'involves_percept(A,' + per + ')'
+            predicate = 'involves_percept(S,' + per + ')'
             self.db_h << predicate
             self.db_h[predicate] = 0.0
             self.db_s << predicate
@@ -249,21 +270,29 @@ class Main():
             while not rospy.core.is_shutdown():
                 self.decay()
                 self.ros_publish()
+                if self.predict_next_cycle:
+                    pred_s, conf_s = self.reason()
+                    self.arm.evaluate_rules(pred_s, self.room_e_history[-1])
+                    query, args = self.query_select()
+                    if query:
+                        self.label_query(args)
+                    self.predict_next_cycle = False
                 rospy.rostime.wallsleep(0.5)
             
     # ROS Callbacks
 
     def ros_evidence_callback(self, msg):
-        print('[ROS] Received evidence:', msg.evidence, msg.etype)
+        log = 'Received evidence: (' + msg.etype + ',' + msg.cmd + ',' + msg.evidence + ')'
+        self.logger.log(log)
         if msg.cmd == 'add':
-            self.add(msg.evidence, msg.etype)
+            self.add(msg.evidence, msg.etype, msg.room)
         elif msg.cmd == 'delete':
             self.delete(msg.evidence, msg.etype)
         else:
-            print('[ROS] Invalid command in ROS evidence topic.')
+            self.logger.log_warm('Invalid command in ROS evidence topic.')
             
     def ros_reason_callback(self, goal):
-        print('[ROS] Received requested to reason.')
+        self.logger.log('Received requested to reason.')
         pred, conf = self.reason()
         
         self._result.pred = pred
@@ -272,47 +301,27 @@ class Main():
         self._as.set_succeeded(self._result)
         
     def ros_reset_callback(self, msg):
-        print('[ROS] Received reset command.')
-        self.reset_current_evidence()
-
-    def ros_new_mln_callback(self, msg):
-        print('[ROS] Received request to create new MLNs:', msg.data)
-        name = msg.data
-
-        self.create_mlns(name)
-
-    def ros_load_mln_callback(self, msg):
-        print('[ROS] Received request to load MLNs:', msg.data)
-        name = msg.data
-
-        self.mln_prefix = name
-
-        self.load_mlns()
+        self.logger.log('Received reset command.')
+        self.reset_working_memory()
 
     def ros_add_rule_start_callback(self, msg):
         self.mode = 'train'
-        print('[ROS] Entered training mode.')
+        self.asm.start_sequence()
+        self.logger.log('Entered training mode.')
 
     def ros_add_rule_stop_callback(self, msg):
         self.mode = 'predict'
-        print('[ROS] Entered predict mode.')
+        self.asm.stop_sequence()
+        self.logger.log('Entered predict mode.')
 
     def ros_add_rule_label_callback(self, msg):
         label = msg.data
-        print('[ROS] Received label for new rule:', label)
+        log = 'Labelling new rule as: ' + label
+        self.logger.log(log)
         self.save_rule(label)
 
     def ros_mln_train_callback(self, msg):
-        mode = msg.data
-        print('[ROS] Changing MLN training mode to:', mode)
-        if mode == 'global':
-            self.train_mode = 'global'
-        elif mode == 'restricted':
-            self.train_mode = 'restricted'
-        else:
-            print('[ROS] Invalid MLN train mode specified.')
-            
-        print('[ROS] Received request to train MLNs.')
+        self.logger.log('Received request to train MLNs.')
         self.train_mlns()
 
     # ROS Publishers
@@ -343,9 +352,9 @@ class Main():
     # MLN API Methods
 
     def print_mlns(self):
-        print('[INFO] * * * mln_h * * *')
+        self.logger.log_mini_header('MLN_H')
         self.mln_h.write()
-        print('[INFO] * * * mln_s * * *')
+        self.logger.log_mini_header('MLN_S')
         self.mln_s.write()
 
     def save_mlns(self):
@@ -355,37 +364,35 @@ class Main():
         path = self.rel_path + '/src/MLNs/' + self.mln_prefix + '_MLN_s.mln'
         self.mln_s.tofile(path)
 
-    def save_train_dbs(self):
-        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_h.p'
-        pickle.dump(self.global_train_db_h, open(path, 'wb'))
-
-        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.p'
-        pickle.dump(self.global_train_db_s, open(path, 'wb'))
-
-        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_h.p'
-        pickle.dump(self.restricted_train_db_h, open(path, 'wb'))
-
-        path = self.rel_path + '/src/DBs/' + self.mln_prefix + '_DB_s.p'
-        pickle.dump(self.restricted_train_db_s, open(path, 'wb'))
-
-    def print_train_dbs(self):
-        print('[INFO] * * * global_train_db_h * * *')
-        print(self.global_train_db_h)
-        print('[INFO] * * * global_train_db_s * * *')
-        print(self.global_train_db_s)
-
     def save_rule(self, label):
+        label_s = label
+        label_h = self.adlhh.get_parent(label_s)
+
+        self.asm.label_sequence(label_s)
+
+        self.print_mlns()
+
+        self.save_evidence(label_h, label_s)
+
+        self.create_pred_store()
+
+        self.train_mlns()
+
+        self.save_mlns()
+
+    # Deprecated, adds full written rule to MLN instead of using the auto-generated rules
+    def save_rule_full(self, label):
         label_s = label
         label_h = self.adlhh.get_parent(label_s)
 
         rule_str = '0.0 '
         for event in self.ps['events']:
-            rule_str = rule_str + event[0] + '(a,' + event[1] + ')'
+            rule_str = rule_str + event
             rule_str = rule_str + ' ^ '
         rule_str = rule_str.rstrip(' ^ ')
         
-        rule_str_h = rule_str + ' => ' + 'class(a,' + label_h + ')'
-        rule_str_s = rule_str + ' => ' + 'class(a,' + label_s + ')'
+        rule_str_h = rule_str + ' => ' + 'class(s,' + label_h + ')'
+        rule_str_s = rule_str + ' => ' + 'class(s,' + label_s + ')'
 
         self.mln_h << rule_str_h
         self.mln_s << rule_str_s
@@ -393,49 +400,70 @@ class Main():
         if len(self.ps['percepts']) > 0:
             rule_str = '0.0 '
             for percept in self.ps['percepts']:
-                rule_str = rule_str + percept[0] + '(a,' + percept[1] + ')'
+                rule_str = rule_str + percept
                 rule_str = rule_str + ' ^ '
             rule_str = rule_str.rstrip(' ^ ')
 
-            rule_str_s = rule_str + ' => ' + 'class(a,' + label_s + ')'
+            rule_str_s = rule_str + ' => ' + 'class(s,' + label_s + ')'
 
             self.mln_s << rule_str_s
+
+        self.asm.label_sequence(label)
 
         self.print_mlns()
 
         self.save_mlns()
 
-        # Update training evidence DB
-        evidence_and_label = [self.ps['events'], label_h]
-        self.global_train_db_h.append(evidence_and_label)
-        self.restricted_train_db_h.append(evidence_and_label)
-
-        events_and_percepts = self.ps['events'] + self.ps['percepts']
-        evidence_and_label = [events_and_percepts, label_s]
-        self.global_train_db_s.append(evidence_and_label)
-        self.restricted_train_db_s.append(evidence_and_label)
-
-        self.print_train_dbs()
-
-        self.save_train_dbs()
+        self.save_evidence(label_h, label_s)
 
         self.create_pred_store()
+
+        self.train_mlns()
+
+        self.save_mlns()
+
+    def save_evidence(self, label_h, label_s):
+        path_h = self.rel_path + '/src/DBs/' + 'global' + '_DB_h.txt'
+        file = open(path_h, 'a')
+
+        for event in self.ps['events']:
+            file.write(event + '\n')
+        sample_label = 'class(S,' + label_h + ')'
+        file.write(sample_label + '\n')
+        file.write('---\n')
+
+        file.close()
+
+        events_and_percepts = self.ps['events'] + self.ps['percepts']
+
+        path_s = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.txt'
+        file = open(path_s, 'a')
+
+        for event_percept in events_and_percepts:
+            file.write(event_percept + '\n')
+        sample_label = 'class(S,' + label_s + ')'
+        file.write(sample_label + '\n')
+        file.write('---\n')
+
+        file.close()
+
+        self.load_global_train_dbs()
     
-    def reset_current_evidence(self):
+    def reset_working_memory(self):
         try:
             del self.db_h
             del self.db_s
             del self.ps
         except:
-            print('[INFO] Current evidence DBs have not yet be created, they will now be created.')
+            self.logger.log_warn('Evidence (working memory) databases have not yet be created, they will now be created...')
 
         self.db_h = Database(self.mln_h)
         self.db_s = Database(self.mln_s)
 
         self.load_constants_and_percepts()
-        self.init_percepts()
+        self.init_groundings()
         self.create_pred_store()
-        print('[MLN]', 'Reset.')
+        self.logger.log_great('Evidence (working memory) databases have been (re-)initiatlised.')
 
     def evidence(self):
         e_preds = []
@@ -448,11 +476,17 @@ class Main():
         return e_preds, e_confs
 
     def reason(self):
-        result = MLNQuery(mln=self.mln_s, db=self.db_s, method='EnumerationAsk').run()
+        pred_h, conf_h = self.reason_h()
+        pred_s, conf_s = self.reason_s()
+
+        return pred_s, conf_s
+
+    def reason_h(self):
+        result = MLNQuery(mln=self.mln_h, db=self.db_h, method='MC-SAT').run() # EnumerationAsk
 
         queries = []
-        for cla in self.activities:
-            predicate = 'class(a,' + cla + ')'
+        for cla in self.adlhh.get_parents():
+            predicate = 'class(S,' + cla + ')'
             queries.append(predicate)
 
         probs = []
@@ -461,39 +495,82 @@ class Main():
             probs.append(prob)
         
         winner = np.argmax(probs)
-        
-        print('[MLN]', self.activities[winner], probs[winner])
-        return self.activities[winner], probs[winner]
 
-    def add(self, evidence, etype):
-        resp = 'OK'
+        children = self.adlhh.get_parents()
+        self.logger.log_mini_header('Query Results (H)')
+        for i in range(0, len(probs)):
+            msg = '(' + children[i] + ',' + str(probs[i]) + ')'
+            self.logger.log(msg)
+        msg = 'Prediction (H): (' + children[winner] + ',' + str(probs[winner]) + ')'
+        self.logger.log_great(msg)
+
+        self.predictions.append((children[winner], probs[winner]))
+
+        return children[winner], probs[winner]
+    
+    def reason_s(self):
+        result = MLNQuery(mln=self.mln_s, db=self.db_s, method='MC-SAT').run() # EnumerationAsk
+
+        queries = []
+        for cla in self.adlhh.get_children():
+            predicate = 'class(S,' + cla + ')'
+            queries.append(predicate)
+
+        probs = []
+        for q in queries:
+            prob = result.results[q]
+            probs.append(prob)
+        
+        winner = np.argmax(probs)
+
+        children = self.adlhh.get_children()
+        self.logger.log_mini_header('Query Results (S)')
+        for i in range(0, len(probs)):
+            msg = '(' + children[i] + ',' + str(probs[i]) + ')'
+            self.logger.log(msg)
+        msg = 'Prediction (S): (' + children[winner] + ',' + str(probs[winner]) + ')'
+        self.logger.log_great(msg)
+
+        self.predictions.append((children[winner], probs[winner]))
+
+        return children[winner], probs[winner]
+
+    def add(self, evidence, etype, room):
+        resp = 'OK. Attempting to add: (' + etype + ',' + evidence + ')'
 
         if self.valid_pred(evidence, etype):
-            self.add_pred(evidence, etype)
+            self.add_pred(evidence, etype, room)
+            self.predict_next_cycle = True
+            resp = 'OK. Added: (' + etype + ',' + evidence + ')'
+            self.last_add = etype
         else:
-            print('[MLN] Invalid evidence type or invalid predicate. Valid types are: event or percept')
+            resp = 'Invalid evidence type or invalid predicate. Valid types are: event or percept.'
 
-        print('[MLN]', resp)
+        self.logger.log(resp)
         return resp
 
-    def add_pred(self, evidence, etype):
-        # if etype == 'event':
-        #     pred = 'involves_event(a,' + evidence + ')'
-        # elif etype == 'percept':
-        #     pred = 'involves_percept(a,' + evidence + ')'
+    def add_pred(self, evidence, etype, room):
         if etype == 'event':
-            pred = ("involves_event", evidence)
+            pred = 'involves_event(S,' + evidence + ')'
         elif etype == 'percept':
-            pred = ("involves_percept", evidence)
+            pred = 'involves_percept(S,' + evidence + ')'
 
         if self.mode == 'train':
+            self.asm.add_to_sequence(etype, evidence)
             if etype == 'event':
                 self.ps['events'].append(pred)
             elif etype == 'percept':
                 self.ps['percepts'].append(pred)
         elif self.mode == 'predict':
-            self.db_h << pred
-            self.db_s << pred
+            if etype == 'event':
+                self.db_h[pred] = 1.0
+                self.db_s[pred] = 1.0
+                self.room_e_history.append(room)
+                self.pred_e_history.append(pred)
+            elif etype == 'percept':
+                self.db_s[pred] = 1.0
+                self.room_p_history.append(room)
+                self.pred_p_history.append(pred)
     
     def valid_pred(self, evidence, etype):
         if etype in etypes:
@@ -507,56 +584,33 @@ class Main():
     def delete(self, evidence, etype):
         resp = 'OK'
 
-        # simple model of deletion, instantly removes, need to implement
-        # (i) instant deletion for events
-        # (ii) time-based deletion for percepts (e.g. in 60 seconds rectractall will be called for predicate, use queue)
         if etype  == 'event':
             if evidence in self.events:
-                predicate = 'involves_event(a,' + evidence + ')'
-                self.db_h.retract(predicate)
-                self.db_s.retract(predicate)
+                predicate = 'involves_event(S,' + evidence + ')'
+                self.db_h[predicate] = 0.0
+                self.db_s[predicate] = 0.0
             else:
                 resp = 'Evidence not modelled in MLN.'
         elif etype == 'percept':
             if evidence in self.percepts:
-                predicate = 'involves_percept(a,' + evidence + ')'
-                self.db_h.retract(predicate)
-                self.db_s.retract(predicate)
+                predicate = 'involves_percept(S,' + evidence + ')'
+                self.db_s[predicate] = 0.0
             else:
                 resp = 'Evidence not modelled in MLN.'
         else:
             resp = 'Invalid evidence type. Valid types are: event or percept' 
 
-        print('[MLN]', resp)
+        self.logger.log(resp)
         return resp
 
     def train_mlns(self):
-        # Train H
-        path_h = self.rel_path + '/src/temp/train_mln_h.txt'
-        file = open(path_h, 'w')
-
-        for i in range(0, len(self.global_train_db_h)):
-            for event in self.global_train_db_h[i][0]:
-                evidence = event[0] + '(S,' + event[1] + ')'
-                file.write(evidence + '\n')
-            evidence_label = 'class(S,' + self.global_train_db_h[i][1] + ')'
-            file.write(evidence_label + '\n')
-            file.write('---' + '\n')
-
-        file.close()
-
-        train_db_h = Database.load(self.mln_h, path_h)
-        # train_db_h.write()
-
-        # TODO: Deal with self.global_train_db_s
-
         DEFAULT_CONFIG = os.path.join(locs.user_data, global_config_filename)
         conf = PRACMLNConfig(DEFAULT_CONFIG)
 
         config = {}
         config['verbose'] = True
         config['discr_preds'] = 0
-        config['db'] = train_db_h
+        config['db'] = self.global_train_db_h
         config['mln'] = self.mln_h
         config['ignore_zero_weight_formulas'] = 0
         config['ignore_unknown_preds'] = False
@@ -572,40 +626,18 @@ class Main():
         config['prior_stddev'] = 5
         config['save'] = True
         config['use_initial_weights'] = 0
-        config['use_prior'] = 0
+        config['use_prior'] = 1
 
         config['infoInterval'] = 500
         config['resultsInterval'] = 1000
         conf.update(config)
 
-        print('[MLN] Training...')
-        learn = MLNLearn(conf, mln=self.mln_h, db=train_db_h)
+        self.logger.log('Training...')
+        learn = MLNLearn(conf, mln=self.mln_h, db=self.global_train_db_h)
 
         self.mln_h = learn.run()
 
         # Train S
-
-        path_s = self.rel_path + '/src/temp/train_mln_s.txt'
-        file = open(path_s, 'w')
-
-        for i in range(0, len(self.global_train_db_s)):
-            for event_percept in self.global_train_db_s[i][0]:
-                evidence = event_percept[0] + '(S,' + event_percept[1] + ')'
-                file.write(evidence + '\n')
-            evidence_label = 'class(S,' + self.global_train_db_s[i][1] + ')'
-            file.write(evidence_label + '\n')
-            file.write('---' + '\n')
-
-        file.close()
-
-        train_db_s = Database.load(self.mln_s, path_s)
-
-        for per in self.percepts:
-            predicate = 'involves_percept(S,' + per + ')'
-            self.db_h << predicate
-            self.db_h[predicate] = 0.0
-            self.db_s << predicate
-            self.db_s[predicate] = 0.0
 
         DEFAULT_CONFIG = os.path.join(locs.user_data, global_config_filename)
         conf = PRACMLNConfig(DEFAULT_CONFIG)
@@ -613,7 +645,7 @@ class Main():
         config = {}
         config['verbose'] = True
         config['discr_preds'] = 0
-        config['db'] = train_db_s
+        config['db'] = self.global_train_db_s
         config['mln'] = self.mln_s
         config['ignore_zero_weight_formulas'] = 0
         config['ignore_unknown_preds'] = False
@@ -629,30 +661,58 @@ class Main():
         config['prior_stddev'] = 5
         config['save'] = True
         config['use_initial_weights'] = 0
-        config['use_prior'] = 0
+        config['use_prior'] = 1
 
         config['infoInterval'] = 500
         config['resultsInterval'] = 1000
         conf.update(config)
 
-        print('[MLN] Training...')
-        learn = MLNLearn(conf, mln=self.mln_s, db=train_db_s)
+        self.logger.log('Training...')
+        learn = MLNLearn(conf, mln=self.mln_s, db=self.global_train_db_s)
 
         self.mln_s = learn.run()
 
         self.print_mlns()
     
-        print('[MLN] Finished training.')
-        
+        self.logger.log('Finished training.')
+
+    # Querying
+
+    def query_select(self):
+        if len(self.predictions) < 3:
+            return False, None
+        else:
+            if (self.predictions[-2][0] == self.predictions[-3][0]) and (self.predictions[-2][0] != self.predictions[-1][0]):
+                return True, [self.predictions[-1][0], self.predictions[-2][0]]
+            else:
+                return False, None
+
+    def label_query(self, options):
+        msg = dm_system_request()
+        msg.intent = 'har_adl_label_query'
+        msg.args = options
+        msg = 'Issuing query via dialogue system:' + str(options)
+        self.logger.log_great(msg)
+        self.pub_dm_request.publish(msg)
 
     # Additional Logic
 
     def decay(self):
-        # do something here to decay events, e.g.
-        # (i) events when added are put into a dictionary with a timestamp
-        # (ii) every tick, we compare the timestamp of events with current timestamp
-        # (iii) if timestamp is older than x (used a tiered system), then call delete on that event
-        return
+        # simple decay model, use last four events and reset on room change
+        if self.last_add == 'event':
+            if len(self.pred_e_history) > 4:
+                if self.room_e_history[-1] != self.room_e_history[-2]:
+                    new_room = self.room_e_history[-1]
+                    for i in range(0, len(self.pred_e_history) - 1):
+                        self.db_h[self.pred_e_history[i]] = 0.0
+                        self.db_s[self.pred_e_history[i]] = 0.0
+                    self.room_e_history = []
+                    self.room_e_history.append(new_room)
+
+            if len(self.pred_e_history) > 4:
+                expired = self.pred_e_history.pop(0)
+                self.db_h[expired] = 0.0
+                self.db_s[expired] = 0.0
 
 if __name__ == '__main__':
     m = Main()
@@ -665,7 +725,7 @@ if __name__ == '__main__':
     @app.route('/reset', methods = ['POST'])
     def reset_handler():
 
-        m.reset_current_evidence()
+        m.reset_working_memory()
 
         return 'OK'
 
@@ -681,7 +741,6 @@ if __name__ == '__main__':
 
     @app.route('/reason', methods = ['POST'])
     def reason_handler():
-
         pred, prob = m.reason()
 
         result = {}
@@ -696,8 +755,9 @@ if __name__ == '__main__':
 
         evidence = data['evidence']
         etype = data['etype']
+        room = data['room']
 
-        resp = m.add(evidence, etype)
+        resp = m.add(evidence, etype, room)
 
         return resp
 

@@ -1,1 +1,1 @@
-0.0 involves_event(a,Kettle) => class(a,FoodDrink)
+0.0 involves_event(a,+event) => class(a,+activity)

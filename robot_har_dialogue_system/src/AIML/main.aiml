@@ -1,4 +1,5 @@
-<aiml version="1.0.1" encoding="UTF-8">
+<?xml version="1.0" encoding="UTF-8"?>
+<aiml version="2.0">
 
     <!-- ROOT CASES -->
 
@@ -45,6 +46,17 @@
             <think>
                 <set name="affirm_label">false</set>
                 <set name="user_label"><star/></set>
+            </think>
+        </template>
+    </category>
+
+    <category>
+        <pattern>MONITOR RULE DO * WHEN *</pattern>
+        <template>
+            <think>
+                <set name="responder">confirm_monitor_rule</set>
+                <set name="do"><star index="1"/></set>
+                <set name="when"><star index="2"/></set>
             </think>
         </template>
     </category>
@@ -138,6 +150,13 @@
 
     <category>
         <pattern>I AM JUST ABOUT TO *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I WAS *</pattern>
         <template>
             <srai>SAVE USER LABEL <star index="1"/></srai>
         </template>
@@ -452,6 +471,134 @@
         <pattern>I'M NOT DOING EITHER OF THOSE THINGS I'M *</pattern>
         <template>
             <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <!-- CREATE NEW ADL MONITORING RULE -->
+
+    <category>
+        <pattern>I * WATCH * WHILE HE DOES *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I * WATCH * WHILE SHE DOES *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I * WATCH * WHILE THEY DO *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I * WATCH * WHILE HE *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I * WATCH * WHILE SHE *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I * WATCH * WHILE THEY *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I * WATCH * WHEN HE *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I * WATCH * WHEN SHE *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I * WATCH * WHEN THEY *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>CAN * WATCH * WHEN HE *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>CAN * WATCH * WHEN SHE *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>CAN * WATCH * WHEN THEY *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>CAN * WATCH * WHILE HE *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>CAN * WATCH * WHILE SHE *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>CAN * WATCH * WHILE THEY *</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="3"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>WHEN * IS * CAN YOU  * HIM FOR ME</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="2"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>WHEN * IS * CAN YOU  * HER FOR ME</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="2"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>WHEN * IS * CAN YOU  * THEM FOR ME</pattern>
+        <template>
+            <srai>MONITOR RULE DO WATCH WHEN <star index="2"/></srai>
         </template>
     </category>
 
