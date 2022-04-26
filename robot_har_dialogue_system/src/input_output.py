@@ -17,6 +17,10 @@ class InputOutput(object):
 
         self.tts_pub = rospy.Publisher('/talk_request', Voice, queue_size=10)
 
+        self.r = sr.Recognizer()
+        # self.r.energy_treshold = 375
+        sr.Microphone.list_microphone_names()
+
         self.logger.log_great('Ready.')
 
     def say(self, text):
@@ -37,20 +41,32 @@ class InputOutput(object):
         rospy.sleep(5)
 
     def listen(self):
-        r = sr.Recognizer()
-        r.energy_treshold = 375
         with sr.Microphone() as source:
-            print('Say something...')
-            audio = r.listen(source, timeout=10, phrase_time_limit=5)
-            print('Done listening.')
+            log = 'Adjusting for ambient noise...'
+            self.logger.log(log)
+            self.r.adjust_for_ambient_noise(source)
+            log = 'Say something...'
+            self.logger.log(log)
+            try:
+                audio = self.r.listen(source, timeout=10, phrase_time_limit=5)
+                # os.system('play -n synth 0.25 sin 700')
+                log = 'Done listening.'
+                self.logger.log(log)
+            except sr.WaitTimeoutError:
+                msg = 'No audio detected.'
+                self.logger.log_warn(msg)
         try:
-            result = r.recognize_google_cloud(audio)
-            print("Google Cloud Speech thinks you said", result)
+            log = 'Sending audio to Google Cloud ASR for processing...'
+            self.logger.log(log)
+            result = self.r.recognize_google_cloud(audio)
+            log = 'Google Cloud ASR thinks you said: ' + result
+            self.logger.log(log)
             return result
         except sr.UnknownValueError:
-            print("Google Cloud Speech could not understand audio")
+            log = 'Google Cloud ASR could not understand audio.'
+            self.logger.log_warn(log)
         except sr.RequestError as e:
-            print("Could not request results from Google Cloud Speech service; {0}".format(e))
+            print("Could not request results from Google Cloud ASR service: {0}".format(e))
 
 if __name__ == '__main__':
     io = InputOutput()

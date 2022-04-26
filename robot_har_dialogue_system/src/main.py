@@ -2,6 +2,7 @@
 from aiohttp import request
 import rospy
 import rospkg
+import sys
 from rasa.nlu.model import Interpreter
 
 from dialogue_manager import DialogueManager
@@ -21,6 +22,7 @@ class Main():
     def __init__(self):
         self.id = 'main'
         self.logger = Log(self.id)
+        self.logger.startup_msg()
 
         self.lock = 0
 
@@ -48,9 +50,12 @@ class Main():
 
     def spin(self):
         while not rospy.is_shutdown():
-            request = input()
-            # request = self.io.listen() # enable this to get input from microphone instead of keyboard
-            self.process_user_request(request)
+            cmd = input('~>')
+            if cmd == 'exit':
+                sys.exit(0)
+            elif cmd == 'x':
+                cmd = self.io.listen() # enable this to get input from microphone instead of keyboard
+            self.process_user_request(cmd)
             rospy.sleep(0.5)
 
 # Process Requests (System & User)

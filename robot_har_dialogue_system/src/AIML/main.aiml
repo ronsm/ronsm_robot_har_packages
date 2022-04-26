@@ -17,6 +17,7 @@
         <template>
             <think>
                 <set name="user_label"><star/></set>
+                <set name="affirm_label">true</set>
                 <set name="responder">bypass</set>
             </think>
         </template>
@@ -27,6 +28,7 @@
         <template>
             <think>
                 <set name="affirm_label">true</set>
+                <set name="responder">bypass</set>
             </think>
         </template>
     </category>
@@ -36,6 +38,7 @@
         <template>
             <think>
                 <set name="affirm_label">false</set>
+                <set name="responder">bypass</set>
             </think>
         </template>
     </category>
@@ -46,6 +49,7 @@
             <think>
                 <set name="affirm_label">false</set>
                 <set name="user_label"><star/></set>
+                <set name="responder">bypass</set>
             </think>
         </template>
     </category>
@@ -72,6 +76,13 @@
     </category>
 
     <category>
+        <pattern>I WAS *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
         <pattern>I'M *</pattern>
         <template>
             <srai>SAVE USER LABEL <star index="1"/></srai>
@@ -80,6 +91,13 @@
 
     <category>
         <pattern>I'M JUST *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>I WAS JUST *</pattern>
         <template>
             <srai>SAVE USER LABEL <star index="1"/></srai>
         </template>
@@ -428,7 +446,7 @@
         </template>
     </category>
 
-    <!-- B) LABEL AFFIRMATION -->
+    <!-- B) LABEL AFFIRMATION / DENIAL -->
 
     <category>
         <pattern>THAT IS CORRECT</pattern>
@@ -448,6 +466,13 @@
         <pattern>THAT IS NOT CORRECT I'M *</pattern>
         <template>
             <srai>DENY LABEL WITH <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT IS CORRECT</pattern>
+        <template>
+            <srai>AFFIRM LABEL</srai>
         </template>
     </category>
 

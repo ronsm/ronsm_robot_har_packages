@@ -27,19 +27,21 @@ class SemanticSimilarity(object):
 
         if compare_all:
             similarity_scores = self.compute_similarity(compare)
-            similarity_scores_sorted, top_label = self.sort_similarity_scores(similarity_scores)
-            return follow_up, options, top_label
+            similarity_scores_sorted, top_label, low_confidence = self.sort_similarity_scores(similarity_scores)
+            return follow_up, options, top_label, low_confidence
         else:
             if len(labels) == 2:
                 similarity_scores = self.compute_similarity(compare)
-                similarity_scores_sorted, top_label = self.sort_similarity_scores(similarity_scores)
-                return follow_up, options, top_label
-            elif len(labels) == 3:
-                similarity_scores = self.compute_similarity(compare)
-                similarity_scores_sorted, top_label = self.sort_similarity_scores(similarity_scores)
+                similarity_scores_sorted, top_label, low_confidence = self.sort_similarity_scores(similarity_scores)
                 follow_up, options = self.evaluate_follow_up(similarity_scores_sorted)
                 options = self.get_options_natural_descriptions(options)
-                return follow_up, options, top_label
+                return follow_up, options, top_label, low_confidence
+            elif len(labels) == 3:
+                similarity_scores = self.compute_similarity(compare)
+                similarity_scores_sorted, top_label, low_confidence = self.sort_similarity_scores(similarity_scores)
+                follow_up, options = self.evaluate_follow_up(similarity_scores_sorted)
+                options = self.get_options_natural_descriptions(options)
+                return follow_up, options, top_label, low_confidence
             else:
                 self.logger.log_warn('Invalid number of labels provided. Upstream error.')
 
@@ -87,6 +89,7 @@ class SemanticSimilarity(object):
 
     def sort_similarity_scores(self, similarity_scores):
         similarity_scores_argmax = {}
+        low_confidence = False
 
         for key, value in similarity_scores.items():
             np_array = np.asarray(value)
@@ -100,7 +103,10 @@ class SemanticSimilarity(object):
 
         print(data_sorted)
 
-        return data_sorted, top_label
+        if data_sorted[top_label] < 0.6:
+            low_confidence = True
+
+        return data_sorted, top_label, low_confidence
 
     def get_options_natural_descriptions(self, options):
         options_natural_descriptions = []

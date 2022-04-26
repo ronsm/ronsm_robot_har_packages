@@ -32,9 +32,9 @@ class Responder(object):
     def query_1_label(self, confirmation_label):
         choices = []
 
-        msg = 'Can you confirm that you are currently ' + confirmation_label + '?'
+        msg = 'Can you confirm that you are currently ' + confirmation_label.semantic_description + '?'
         choices.append(msg)
-        msg = 'It looks to me like you are ' + confirmation_label + '. Can you confirm this for me?'
+        msg = 'It looks to me like you are ' + confirmation_label.semantic_description + '. Can you confirm this for me?'
         choices.append(msg)
 
         choice = np.random.choice(choices)
@@ -86,6 +86,18 @@ class Responder(object):
         choice = np.random.choice(choices)
 
         self.io.say(choice)
+
+    def low_confidence_label(self):
+        msg = 'Sorry, I was unable to find a suitable matching label. I will not label this activity.'
+        self.io.say(msg)
+
+    def low_confidence_label_teaching(self):
+        msg = 'Sorry, I was unable to find a suitable matching label. I will label this activity as other.'
+        self.io.say(msg)
+
+    def sorry_please_try_again(self):
+        msg = 'Sorry, I didnt understand that. Please try again.'
+        self.io.say(msg)
 
 # User Intent Responses
 

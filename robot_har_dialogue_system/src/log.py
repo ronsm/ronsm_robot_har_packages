@@ -7,7 +7,7 @@ class Log(object):
     def startup_msg(self):
         print(Fore.YELLOW + '* * * * * * * * * * * * * * * * * *')
         print()
-        print(Style.BRIGHT + ' HAR Query Committee' + Style.RESET_ALL + Fore.YELLOW)
+        print(Style.BRIGHT + ' robot_har_dialogue_system' + Style.RESET_ALL + Fore.YELLOW)
         print()
         print(' Developer: Ronnie Smith')
         print(' Email:     ronnie.smith@ed.ac.uk')
@@ -30,3 +30,8 @@ class Log(object):
     def log_great(self, msg):
         tag = '[' + self.id + ']'
         print(Fore.CYAN + tag, Fore.GREEN + msg, Fore.RESET)
+
+    def log_mini_header(self, msg):
+        tag = '[' + self.id + ']'
+        print(Fore.CYAN + tag, Fore.RESET)
+        print(Fore.CYAN + tag, Style.BRIGHT + Fore.MAGENTA + msg + Style.RESET_ALL, Fore.RESET)

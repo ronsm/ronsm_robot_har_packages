@@ -22,14 +22,9 @@ involves_event(S,DiningChairSit)
 class(S,Working)
 ---
 involves_event(S,FoodCabinet)
-involves_event(S,FoodCabinet)
-involves_event(S,Kettle)
-involves_event(S,Kettle)
+involves_event(S,DinnerwareCabinet)
 class(S,Cooking)
 ---
-involves_event(S,Fridge)
-involves_event(S,Fridge)
 involves_event(S,FoodCabinet)
-involves_event(S,FoodCabinet)
-class(S,Sleeping)
+class(S,Cooking)
 ---

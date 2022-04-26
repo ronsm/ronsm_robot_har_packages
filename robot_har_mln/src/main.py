@@ -2,7 +2,7 @@
 
 import os
 import threading
-
+import copy
 from pracmln import MLN, Database, MLNQuery
 from pracmln.utils import config, locs
 from pracmln.utils.project import PRACMLNConfig
@@ -22,6 +22,7 @@ from adl_hierarchy_helper import ADLHierarchyHelper
 from adl_sequence_modeller import ADLSequenceModeller
 from adl_rule_modeller import ADLRuleModeller
 from query_selection import QuerySelection
+from train_db_consistency_helper import TrainDBConsistencyHelper
 from log import Log
 
 from std_msgs import msg
@@ -68,7 +69,8 @@ class Main():
 
         # Helper Classes
         self.qs = QuerySelection()
-        self.adlhh = ADLHierarchyHelper(self.rel_path)
+        self.ahh = ADLHierarchyHelper(self.rel_path)
+        self.tdch = TrainDBConsistencyHelper(self.rel_path)
         if RESET:
             self.asm = ADLSequenceModeller(self.rel_path, reset=True)
             self.arm = ADLRuleModeller(self.rel_path, reset=True)
@@ -98,6 +100,8 @@ class Main():
         # Predictions
         self.predictions_h = []
         self.predictions_s = []
+        self.predictions_h_f = []
+        self.predictions_s_f = []
 
         # Segmentation
         self.room_e_history = []
@@ -105,6 +109,13 @@ class Main():
         self.pred_e_history = []
         self.pred_p_history = []
         self.last_add = None
+        self.fork_active = False
+        self.predictions_in_segment = 0
+        self.predictions_in_segment_f = 0
+        self.query_triggered = False
+        self.label_save = None
+        self.segment_save_e = None
+        self.segment_save_p = None
 
         # Loads
         self.create_pred_store()
@@ -173,6 +184,7 @@ class Main():
         rules_s_file = open(rules_s_path, 'r')
 
         self.events = []
+        self.events_persist = []
         self.percepts = []
         self.predicates = []
         self.rules_h = []
@@ -180,6 +192,14 @@ class Main():
 
         for line in event_file:
             self.events.append(line.rstrip('\n'))
+        
+        # check if persistent event (starts with !), adds tuple (persistent_event, cancelling_event)
+        for i in range(0, len(self.events)):
+            if self.events[i][0] == '!':
+                self.events[i] = self.events[i].replace('!', '')
+                pred_persist = 'involves_event(S,' + self.events[i] + ')'
+                pred_cancel = 'involves_event(S,' + self.events[i+1] + ')'
+                self.events_persist.append((pred_persist, pred_cancel))
 
         for line in percept_file:
             self.percepts.append(line.rstrip('\n'))
@@ -196,14 +216,14 @@ class Main():
     def init_mlns(self, default_rules=False):
         # H
         activity_str = 'activity = {'
-        for activity in self.adlhh.get_parents():
+        for activity in self.ahh.get_parents():
             activity_str = activity_str + activity + ','
         activity_str = activity_str.rstrip(',') + '}'
         self.mln_h << activity_str
         
         # S
         activity_str = 'activity = {'
-        for activity in self.adlhh.get_children():
+        for activity in self.ahh.get_children():
             activity_str = activity_str + activity + ','
         activity_str = activity_str.rstrip(',') + '}'
         self.mln_s << activity_str
@@ -245,6 +265,9 @@ class Main():
     def init_groundings(self):
         self.db_h = Database(self.mln_h)
         self.db_s = Database(self.mln_s)
+        
+        self.db_h_f = Database(self.mln_h)
+        self.db_s_f = Database(self.mln_s)
 
         for event in self.events:
             predicate = 'involves_event(S,' + event + ')'
@@ -252,6 +275,10 @@ class Main():
             self.db_h[predicate] = 0.0
             self.db_s << predicate
             self.db_s[predicate] = 0.0
+            self.db_h_f << predicate
+            self.db_h_f[predicate] = 0.0
+            self.db_s_f << predicate
+            self.db_s_f[predicate] = 0.0
 
         for per in self.percepts:
             predicate = 'involves_percept(S,' + per + ')'
@@ -259,6 +286,10 @@ class Main():
             self.db_h[predicate] = 0.0
             self.db_s << predicate
             self.db_s[predicate] = 0.0
+            self.db_h_f << predicate
+            self.db_h_f[predicate] = 0.0
+            self.db_s_f << predicate
+            self.db_s_f[predicate] = 0.0
 
     def create_pred_store(self):
         self.ps = {}
@@ -270,14 +301,21 @@ class Main():
     def loop(self):
         while(True):
             while not rospy.core.is_shutdown():
-                self.decay()
                 self.ros_publish()
+                waiting_for_label = self.qs.is_waiting_for_label()
+                if waiting_for_label:
+                    label = self.check_for_label()
+                    if label:
+                        apply_to_fork = self.qs.apply_to(self.label_save)
+                        if apply_to_fork:
+                            self.swap_fork_to_main_working_memory()
+                    segment = self.check_for_finalised_segment()
+                    if label and segment:
+                        self.qs.set_waiting_for_response(yes_no=False)
+                        self.save_segment()
                 if self.predict_next_cycle:
-                    self.reason()
+                    self.decay_and_reason() # includes reasoning
                     self.arm.evaluate_rules(self.predictions_h, self.predictions_s, self.room_e_history[-1])
-                    query, args = self.qs.query_select(self.predictions_h, self.predictions_s)
-                    if query:
-                        self.qs.label_query(args)
                     self.predict_next_cycle = False
                 rospy.rostime.wallsleep(0.5)
             
@@ -318,9 +356,17 @@ class Main():
 
     def ros_add_rule_label_callback(self, msg):
         label = msg.data
-        log = 'Labelling new rule as: ' + label
-        self.logger.log(log)
-        self.save_rule(label)
+        if self.mode == 'train':
+            log = 'Labelling new rule as: ' + label
+            self.logger.log(log)
+            self.save_rule(label)
+        elif self.mode == 'predict':
+            log = 'Received new label for query: ' + label
+            self.logger.log(log)
+            self.label_save = label
+        else:
+            log = 'System is invalid mode, unable to handle label callback.'
+            self.logger.log_warn(log)
 
     def ros_mln_train_callback(self, msg):
         self.logger.log('Received request to train MLNs.')
@@ -368,7 +414,7 @@ class Main():
 
     def save_rule(self, label):
         label_s = label
-        label_h = self.adlhh.get_parent(label_s)
+        label_h = self.ahh.get_parent(label_s)
 
         self.asm.label_sequence(label_s)
 
@@ -385,7 +431,7 @@ class Main():
     # Deprecated, adds full written rule to MLN instead of using the auto-generated rules
     def save_rule_full(self, label):
         label_s = label
-        label_h = self.adlhh.get_parent(label_s)
+        label_h = self.ahh.get_parent(label_s)
 
         rule_str = '0.0 '
         for event in self.ps['events']:
@@ -450,6 +496,60 @@ class Main():
         file.close()
 
         self.load_global_train_dbs()
+
+    def save_segment(self):
+        label = self.label_save
+        segment_e = self.segment_save_e
+        segment_p = self.segment_save_p
+
+        if segment_p == None:
+            segment_p = []
+
+        segment_e = set(segment_e)
+        segment_e = list(segment_e)
+
+        segment_p = set(segment_p)
+        segment_p = list(segment_p)
+
+        label_s = label
+        label_h = self.ahh.get_parent(label_s)
+
+        self.save_evidence_query(segment_e, segment_p, label_h, label_s)
+
+        self.label_save = None
+        self.segment_save_e = None
+        self.segment_save_p = None
+
+        self.train_mlns()
+
+        self.save_mlns()
+
+    def save_evidence_query(self, segment_e, segment_p, label_h, label_s):
+        path_h = self.rel_path + '/src/DBs/' + 'global' + '_DB_h.txt'
+        file = open(path_h, 'a')
+
+        for event in segment_e:
+            file.write(event + '\n')
+        sample_label = 'class(S,' + label_h + ')'
+        file.write(sample_label + '\n')
+        file.write('---\n')
+
+        file.close()
+
+        events_and_percepts = segment_e + segment_p
+
+        path_s = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.txt'
+        file = open(path_s, 'a')
+
+        for event_percept in events_and_percepts:
+            file.write(event_percept + '\n')
+        sample_label = 'class(S,' + label_s + ')'
+        file.write(sample_label + '\n')
+        file.write('---\n')
+
+        file.close()
+
+        self.load_global_train_dbs()
     
     def reset_working_memory(self):
         # DBs
@@ -462,10 +562,14 @@ class Main():
 
         self.db_h = Database(self.mln_h)
         self.db_s = Database(self.mln_s)
+        self.db_h_f = Database(self.mln_h)
+        self.db_s_f = Database(self.mln_s)
 
         # Predictions
         self.predictions_h = []
         self.predictions_s = []
+        self.predictions_h_f = []
+        self.predictions_s_f = []
 
         # Segmentation
         self.room_e_history = []
@@ -491,14 +595,28 @@ class Main():
         return e_preds, e_confs
 
     def reason(self):
+        self.logger.log_mini_header('Evidence State (Main) (H)')
+        self.db_h.write()
+        self.logger.log_mini_header('Evidence State (Main) (S)')
+        self.db_s.write()
         self.reason_h()
         self.reason_s()
+        self.predictions_in_segment = self.predictions_in_segment + 1
+
+    def reason_f(self):
+        self.logger.log_mini_header('Evidence State (Fork) (H)')
+        self.db_h_f.write()
+        self.logger.log_mini_header('Evidence State (Fork) (S)')
+        self.db_s_f.write()
+        self.reason_h_f()
+        self.reason_s_f()
+        self.predictions_in_segment_f = self.predictions_in_segment_f + 1
 
     def reason_h(self):
         result = MLNQuery(mln=self.mln_h, db=self.db_h, method='MC-SAT').run() # EnumerationAsk
 
         queries = []
-        for cla in self.adlhh.get_parents():
+        for cla in self.ahh.get_parents():
             predicate = 'class(S,' + cla + ')'
             queries.append(predicate)
 
@@ -509,7 +627,7 @@ class Main():
         
         winner = np.argmax(probs)
 
-        parents = self.adlhh.get_parents()
+        parents = self.ahh.get_parents()
         self.logger.log_mini_header('Query Results (H)')
         for i in range(0, len(probs)):
             msg = '(' + parents[i] + ',' + str(probs[i]) + ')'
@@ -518,12 +636,12 @@ class Main():
         self.logger.log_great(msg)
 
         self.predictions_h.append((parents[winner], probs[winner], parents, probs))
-    
-    def reason_s(self):
-        result = MLNQuery(mln=self.mln_s, db=self.db_s, method='MC-SAT').run() # EnumerationAsk
+
+    def reason_h_f(self):
+        result = MLNQuery(mln=self.mln_h, db=self.db_h_f, method='MC-SAT').run() # EnumerationAsk
 
         queries = []
-        for cla in self.adlhh.get_children():
+        for cla in self.ahh.get_parents():
             predicate = 'class(S,' + cla + ')'
             queries.append(predicate)
 
@@ -534,7 +652,32 @@ class Main():
         
         winner = np.argmax(probs)
 
-        children = self.adlhh.get_children()
+        parents = self.ahh.get_parents()
+        self.logger.log_mini_header('Query Results (H)')
+        for i in range(0, len(probs)):
+            msg = '(' + parents[i] + ',' + str(probs[i]) + ')'
+            self.logger.log(msg)
+        msg = 'Prediction (H): (' + parents[winner] + ',' + str(probs[winner]) + ')'
+        self.logger.log_great(msg)
+
+        self.predictions_h_f.append((parents[winner], probs[winner], parents, probs))
+    
+    def reason_s(self):
+        result = MLNQuery(mln=self.mln_s, db=self.db_s, method='MC-SAT').run() # EnumerationAsk
+
+        queries = []
+        for cla in self.ahh.get_children(valid_room=self.room_e_history[-1]):
+            predicate = 'class(S,' + cla + ')'
+            queries.append(predicate)
+
+        probs = []
+        for q in queries:
+            prob = result.results[q]
+            probs.append(prob)
+        
+        winner = np.argmax(probs)
+
+        children = self.ahh.get_children(valid_room=self.room_e_history[-1])
         self.logger.log_mini_header('Query Results (S)')
         for i in range(0, len(probs)):
             msg = '(' + children[i] + ',' + str(probs[i]) + ')'
@@ -543,6 +686,31 @@ class Main():
         self.logger.log_great(msg)
 
         self.predictions_s.append((children[winner], probs[winner], children, probs))
+
+    def reason_s_f(self):
+        result = MLNQuery(mln=self.mln_s, db=self.db_s_f, method='MC-SAT').run() # EnumerationAsk
+
+        queries = []
+        for cla in self.ahh.get_children(valid_room=self.room_e_history[-1]):
+            predicate = 'class(S,' + cla + ')'
+            queries.append(predicate)
+
+        probs = []
+        for q in queries:
+            prob = result.results[q]
+            probs.append(prob)
+        
+        winner = np.argmax(probs)
+
+        children = self.ahh.get_children(valid_room=self.room_e_history[-1])
+        self.logger.log_mini_header('Query Results (S)')
+        for i in range(0, len(probs)):
+            msg = '(' + children[i] + ',' + str(probs[i]) + ')'
+            self.logger.log(msg)
+        msg = 'Prediction (S): (' + children[winner] + ',' + str(probs[winner]) + ')'
+        self.logger.log_great(msg)
+
+        self.predictions_s_f.append((children[winner], probs[winner], children, probs))
 
     def add(self, evidence, etype, room):
         resp = 'OK. Attempting to add: (' + etype + ',' + evidence + ')'
@@ -574,10 +742,20 @@ class Main():
             if etype == 'event':
                 self.db_h[pred] = 1.0
                 self.db_s[pred] = 1.0
+                if self.fork_active:
+                    self.db_h_f[pred] = 1.0
+                    self.db_s_f[pred] = 1.0
                 self.room_e_history.append(room)
                 self.pred_e_history.append(pred)
+                canceller, persistent = self.is_canceller(pred)
+                if canceller:
+                    self.db_h[persistent] = 0.0
+                    self.db_s[persistent] = 0.0
+                    self.db_h_f[persistent] = 0.0
+                    self.db_s_f[persistent] = 0.0
             elif etype == 'percept':
                 self.db_s[pred] = 1.0
+                self.db_s_f[pred] = 1.0
                 self.room_p_history.append(room)
                 self.pred_p_history.append(pred)
     
@@ -598,12 +776,17 @@ class Main():
                 predicate = 'involves_event(S,' + evidence + ')'
                 self.db_h[predicate] = 0.0
                 self.db_s[predicate] = 0.0
+                if self.fork_active:
+                    self.db_h_f[predicate] = 0.0
+                    self.db_s_f[predicate] = 0.0
             else:
                 resp = 'Evidence not modelled in MLN.'
         elif etype == 'percept':
             if evidence in self.percepts:
                 predicate = 'involves_percept(S,' + evidence + ')'
                 self.db_s[predicate] = 0.0
+                if self.fork_active:
+                    self.db_s_f[predicate] - 0.0
             else:
                 resp = 'Evidence not modelled in MLN.'
         else:
@@ -687,22 +870,143 @@ class Main():
 
     # Additional Logic
 
-    def decay(self):
-        # simple decay model, use last four events and reset on room change
-        if self.last_add == 'event':
-            if len(self.pred_e_history) > 4:
-                if self.room_e_history[-1] != self.room_e_history[-2]:
-                    new_room = self.room_e_history[-1]
-                    for i in range(0, len(self.pred_e_history) - 1):
-                        self.db_h[self.pred_e_history[i]] = 0.0
-                        self.db_s[self.pred_e_history[i]] = 0.0
-                    self.room_e_history = []
-                    self.room_e_history.append(new_room)
+    def decay_and_reason(self):
+        clear_e_pred_history = False
 
-            if len(self.pred_e_history) > 4:
-                expired = self.pred_e_history.pop(0)
-                self.db_h[expired] = 0.0
-                self.db_s[expired] = 0.0
+        if self.last_add == 'event':
+            if len(self.predictions_s) < 1:
+                self.logger.log('Cannot decay. No prediction has been made yet.')
+            else:
+                rooms = self.ahh.get_rooms(self.predictions_s[-1][0])
+                if len(rooms[0]) == 0:
+                    self.logger.log('Not decaying any predicates, location is consistent.')
+        
+                elif len(rooms) == 1:
+                    if rooms[0] != self.room_e_history[-1]:
+                        self.logger.log('Clearing predicate history, location is not consistent.')
+                        clear_e_pred_history = True
+                    else:
+                        self.logger.log('Not decaying any predicates, location is consistent.')
+
+                elif len(rooms) > 1:
+                    if self.room_e_history[-1] not in rooms:
+                        self.logger.log('Clearing predicate history, location is not consistent.')
+                        clear_e_pred_history = True
+                    else:
+                        self.logger.log('Not decaying any predicates, location is consistent.')
+
+        if clear_e_pred_history:
+            self.clear_pred_history_f()
+            self.clear_pred_history()
+            self.fork_active = False
+
+        self.reason()
+        
+        if not clear_e_pred_history and not self.fork_active and self.predictions_in_segment > 2:
+            consistent_h, consistent_s = self.tdch.is_consistent(self.predictions_h[-2][0], self.predictions_s[-2][0], self.pred_e_history[-1])
+
+            if not consistent_s:
+                self.logger.log('Inconsistent event. Now considering that a new activity has occured...')
+                self.fork_active = True
+
+                self.db_h_f[self.pred_e_history[-1]] = 1.0
+                self.db_s_f[self.pred_e_history[-1]] = 1.0
+
+        consistent_s = None
+        consistent_s_f = None
+        agree = None
+        if self.fork_active:
+            self.reason_f()
+
+            if self.predictions_in_segment_f > 1:
+                consistent_h, consistent_s = self.tdch.is_consistent(self.predictions_h[-1][0], self.predictions_s[-1][0], self.pred_e_history[-1])
+                consistent_h_f, consistent_s_f = self.tdch.is_consistent(self.predictions_h_f[-1][0], self.predictions_s_f[-1][0], self.pred_e_history[-1])
+                
+                if self.predictions_s[-1][0] == self.predictions_s_f[-1][0]:
+                    agree = True
+                else:
+                    agree = False
+
+                log = 'Consistency checking (consistent_s, consistent_s_f, agree): ' + str(consistent_s) + ', ' + str(consistent_s_f) + ', ' + str(agree)
+                self.logger.log(log)
+
+                if not self.query_triggered:
+                    self.qs.query_select(self.predictions_h[-1][0], self.predictions_s[-1][0], self.predictions_h_f[-1][0], self.predictions_s_f[-1][0], consistent_s, consistent_s_f, agree)
+                    self.segment_save_e = None
+                    self.query_triggered = True
+
+    def clear_pred_history(self):
+        self.segment_save_e = copy.deepcopy(self.pred_e_history)
+        self.segment_save_e.pop()
+
+        new_room = self.room_e_history[-1]
+        new_pred = self.pred_e_history[-1]
+        for i in range(0, len(self.pred_e_history) - 1):
+            if not self.is_persistent(self.pred_e_history[i]):
+                self.db_h[self.pred_e_history[i]] = 0.0
+                self.db_s[self.pred_e_history[i]] = 0.0
+        self.db_h[new_pred] = 1.0
+        self.db_s[new_pred] = 1.0
+        
+        self.room_e_history = []
+        self.room_e_history.append(new_room)
+
+        self.pred_e_history = []
+        self.pred_e_history.append(new_pred)
+
+        self.predictions_in_segment = 0
+
+    def clear_pred_history_f(self):
+        for i in range(0, len(self.pred_e_history)):
+            self.db_h_f[self.pred_e_history[i]] = 0.0
+            self.db_s_f[self.pred_e_history[i]] = 0.0
+
+        self.predictions_in_segment_f = 0
+
+        self.query_triggered = False
+
+    def is_persistent(self, pred):
+        for pair in self.events_persist:
+            if pair[0] == pred:
+                return True
+        return False
+
+    def is_canceller(self, pred):
+        for pair in self.events_persist:
+            if pair[1] == pred:
+                return True, pair[0]
+        return False, None
+
+    def swap_fork_to_main_working_memory(self):
+        if self.fork_active:
+            print('Swapping fork to main')
+            self.db_h = copy.deepcopy(self.db_h_f)
+            self.db_s = copy.deepcopy(self.db_s_f)
+
+            self.predictions_h = copy.deepcopy(self.predictions_h_f)
+            self.predictions_s = copy.deepcopy(self.predictions_s_f)
+
+            print(self.pred_e_history)
+            self.pred_e_history = self.pred_e_history[-self.predictions_in_segment_f:]
+            print(self.pred_e_history)
+
+            self.predictions_in_segment = copy.deepcopy(self.predictions_in_segment_f)
+
+            self.clear_pred_history_f()
+            
+            self.fork_active = False
+
+    def check_for_label(self):
+        if self.label_save != None:
+            return True
+        else:
+            return False
+
+    def check_for_finalised_segment(self):
+        if self.segment_save_e != None:
+            return True
+        else:
+            return False
 
 if __name__ == '__main__':
     m = Main()

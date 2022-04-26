@@ -9,7 +9,7 @@ Cooking:Cooking:cooking
 PreparingDrink:PreparingDrink:prearing a drink
 Eating:Eating:eating
 Snacking:Snacking:having a snack
-Watching_TV:Watching_TV:watching TV
+WatchingTV:WatchingTV:watching TV
 UsingComputer:UsingComputer:using a computer
 UsingSmartphone:UsingSmartphone:using your smartphone
 UsingInternet:UsingInternet:using the internet
