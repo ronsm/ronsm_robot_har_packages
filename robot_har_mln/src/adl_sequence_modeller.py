@@ -116,8 +116,6 @@ if __name__ == '__main__':
     sleep(1.2)
     ase.add_to_sequence('event', 'event_name')
     sleep(2.6)
-    ase.add_to_sequence('percept', 'percept_name')
-    sleep(1)
     pose = RobotPose(1.0, 1.0, 3.14, -0.8, 0.4)
     ase.add_to_sequence('action', 'action_name', pose=pose)
     sleep(1)
@@ -126,14 +124,12 @@ if __name__ == '__main__':
 
     ase.start_sequence()
     ase.add_to_sequence('event', 'event_name')
-    ase.add_to_sequence('percept', 'percept_name')
     ase.add_to_sequence('action', 'action_name')
     ase.stop_sequence()
     ase.label_sequence('Working')
 
     ase.start_sequence()
     ase.add_to_sequence('event', 'event_name')
-    ase.add_to_sequence('percept', 'percept_name')
     ase.add_to_sequence('action', 'action_name')
     ase.stop_sequence()
     ase.label_sequence('Sleeping')
