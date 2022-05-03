@@ -35,7 +35,7 @@ from ronsm_messages.msg import dm_system_request
 from ronsm_messages.msg import har_arm_basic
 import ronsm_messages.msg
 
-etypes = ['event', 'percept']
+etypes = ['event']
 
 RESET = False
 
@@ -105,9 +105,7 @@ class Main():
 
         # Segmentation
         self.room_e_history = []
-        self.room_p_history = []
         self.pred_e_history = []
-        self.pred_p_history = []
         self.last_add = None
         self.fork_active = False
         self.predictions_in_segment = 0
@@ -115,11 +113,10 @@ class Main():
         self.query_triggered = False
         self.label_save = None
         self.segment_save_e = None
-        self.segment_save_p = None
 
         # Loads
         self.create_pred_store()
-        self.load_constants_and_percepts()
+        self.load_knowledge_bases()
         self.create_default_mlns()
         self.init_groundings()
         self.load_global_train_dbs()
@@ -168,7 +165,7 @@ class Main():
         path = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.txt'
         self.global_train_db_s = Database.load(self.mln_s, dbfiles=path)
 
-    def load_constants_and_percepts(self):
+    def load_knowledge_bases(self):
         base_path = self.rel_path + '/src/MLNs/common/'
 
         event_path = base_path + 'event.txt'
@@ -184,8 +181,8 @@ class Main():
         rules_s_file = open(rules_s_path, 'r')
 
         self.events = []
-        self.events_persist = []
         self.percepts = []
+        self.events_persist = []
         self.predicates = []
         self.rules_h = []
         self.rules_s = []
@@ -197,12 +194,14 @@ class Main():
         for i in range(0, len(self.events)):
             if self.events[i][0] == '!':
                 self.events[i] = self.events[i].replace('!', '')
-                pred_persist = 'involves_event(S,' + self.events[i] + ')'
-                pred_cancel = 'involves_event(S,' + self.events[i+1] + ')'
+                pred_persist = 'involves(S,' + self.events[i] + ')'
+                pred_cancel = 'involves(S,' + self.events[i+1] + ')'
                 self.events_persist.append((pred_persist, pred_cancel))
 
         for line in percept_file:
-            self.percepts.append(line.rstrip('\n'))
+            entry = line.rstrip('\n')
+            self.events.append(entry)
+            self.percepts.append(entry)
 
         for line in predicate_file:
             self.predicates.append(line.rstrip('\n'))
@@ -228,19 +227,12 @@ class Main():
         activity_str = activity_str.rstrip(',') + '}'
         self.mln_s << activity_str
 
-        event_str = 'event = {'
+        events_str = 'events = {'
         for event in self.events:
-            event_str = event_str + event + ','
-        event_str = event_str.rstrip(',') + '}'
-        self.mln_h << event_str
-        self.mln_s << event_str
-
-        percept_str = 'percept = {'
-        for percept in self.percepts:
-            percept_str = percept_str + percept + ','
-        percept_str = percept_str.rstrip(',') + '}'
-        self.mln_h << percept_str
-        self.mln_s << percept_str
+            events_str = events_str + event + ','
+        events_str = events_str.rstrip(',') + '}'
+        self.mln_h << events_str
+        self.mln_s << events_str
 
         is_fuzzy = False
         for predicate in self.predicates:
@@ -270,18 +262,7 @@ class Main():
         self.db_s_f = Database(self.mln_s)
 
         for event in self.events:
-            predicate = 'involves_event(S,' + event + ')'
-            self.db_h << predicate
-            self.db_h[predicate] = 0.0
-            self.db_s << predicate
-            self.db_s[predicate] = 0.0
-            self.db_h_f << predicate
-            self.db_h_f[predicate] = 0.0
-            self.db_s_f << predicate
-            self.db_s_f[predicate] = 0.0
-
-        for per in self.percepts:
-            predicate = 'involves_percept(S,' + per + ')'
+            predicate = 'involves(S,' + event + ')'
             self.db_h << predicate
             self.db_h[predicate] = 0.0
             self.db_s << predicate
@@ -294,7 +275,6 @@ class Main():
     def create_pred_store(self):
         self.ps = {}
         self.ps['events'] = []
-        self.ps['percepts'] = []
         
     # ROS Loop 
 
@@ -445,17 +425,6 @@ class Main():
         self.mln_h << rule_str_h
         self.mln_s << rule_str_s
 
-        if len(self.ps['percepts']) > 0:
-            rule_str = '0.0 '
-            for percept in self.ps['percepts']:
-                rule_str = rule_str + percept
-                rule_str = rule_str + ' ^ '
-            rule_str = rule_str.rstrip(' ^ ')
-
-            rule_str_s = rule_str + ' => ' + 'class(s,' + label_s + ')'
-
-            self.mln_s << rule_str_s
-
         self.asm.label_sequence(label)
 
         self.print_mlns()
@@ -482,13 +451,11 @@ class Main():
 
         file.close()
 
-        events_and_percepts = self.ps['events'] + self.ps['percepts']
-
         path_s = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.txt'
         file = open(path_s, 'a')
 
-        for event_percept in events_and_percepts:
-            file.write(event_percept + '\n')
+        for event in self.ps['events']:
+            file.write(event + '\n')
         sample_label = 'class(S,' + label_s + ')'
         file.write(sample_label + '\n')
         file.write('---\n')
@@ -500,31 +467,23 @@ class Main():
     def save_segment(self):
         label = self.label_save
         segment_e = self.segment_save_e
-        segment_p = self.segment_save_p
-
-        if segment_p == None:
-            segment_p = []
 
         segment_e = set(segment_e)
         segment_e = list(segment_e)
 
-        segment_p = set(segment_p)
-        segment_p = list(segment_p)
-
         label_s = label
         label_h = self.ahh.get_parent(label_s)
 
-        self.save_evidence_query(segment_e, segment_p, label_h, label_s)
+        self.save_evidence_query(segment_e, label_h, label_s)
 
         self.label_save = None
         self.segment_save_e = None
-        self.segment_save_p = None
 
         self.train_mlns()
 
         self.save_mlns()
 
-    def save_evidence_query(self, segment_e, segment_p, label_h, label_s):
+    def save_evidence_query(self, segment_e, label_h, label_s):
         path_h = self.rel_path + '/src/DBs/' + 'global' + '_DB_h.txt'
         file = open(path_h, 'a')
 
@@ -536,13 +495,11 @@ class Main():
 
         file.close()
 
-        events_and_percepts = segment_e + segment_p
-
         path_s = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.txt'
         file = open(path_s, 'a')
 
-        for event_percept in events_and_percepts:
-            file.write(event_percept + '\n')
+        for event in segment_e:
+            file.write(event + '\n')
         sample_label = 'class(S,' + label_s + ')'
         file.write(sample_label + '\n')
         file.write('---\n')
@@ -573,13 +530,11 @@ class Main():
 
         # Segmentation
         self.room_e_history = []
-        self.room_p_history = []
         self.pred_e_history = []
-        self.pred_p_history = []
         self.last_add = None
 
         # Loads
-        self.load_constants_and_percepts()
+        self.load_knowledge_bases()
         self.init_groundings()
         self.create_pred_store()
         self.logger.log_great('Evidence (working memory) databases have been (re-)initiatlised.')
@@ -721,47 +676,35 @@ class Main():
             resp = 'OK. Added: (' + etype + ',' + evidence + ')'
             self.last_add = etype
         else:
-            resp = 'Invalid evidence type or invalid predicate. Valid types are: event or percept.'
+            resp = 'Invalid evidence type or invalid predicate. Valid types are: event.'
 
         self.logger.log(resp)
         return resp
 
     def add_pred(self, evidence, etype, room):
-        if etype == 'event':
-            pred = 'involves_event(S,' + evidence + ')'
-        elif etype == 'percept':
-            pred = 'involves_percept(S,' + evidence + ')'
+        pred = 'involves(S,' + evidence + ')'
 
         if self.mode == 'train':
             self.asm.add_to_sequence(etype, evidence)
-            if etype == 'event':
-                self.ps['events'].append(pred)
-            elif etype == 'percept':
-                self.ps['percepts'].append(pred)
+            self.ps['events'].append(pred)
         elif self.mode == 'predict':
-            if etype == 'event':
-                self.db_h[pred] = 1.0
-                self.db_s[pred] = 1.0
-                if self.fork_active:
-                    self.db_h_f[pred] = 1.0
-                    self.db_s_f[pred] = 1.0
-                self.room_e_history.append(room)
-                self.pred_e_history.append(pred)
-                canceller, persistent = self.is_canceller(pred)
-                if canceller:
-                    self.db_h[persistent] = 0.0
-                    self.db_s[persistent] = 0.0
-                    self.db_h_f[persistent] = 0.0
-                    self.db_s_f[persistent] = 0.0
-            elif etype == 'percept':
-                self.db_s[pred] = 1.0
+            self.db_h[pred] = 1.0
+            self.db_s[pred] = 1.0
+            if self.fork_active:
+                self.db_h_f[pred] = 1.0
                 self.db_s_f[pred] = 1.0
-                self.room_p_history.append(room)
-                self.pred_p_history.append(pred)
+            self.room_e_history.append(room)
+            self.pred_e_history.append(pred)
+            canceller, persistent = self.is_canceller(pred)
+            if canceller:
+                self.db_h[persistent] = 0.0
+                self.db_s[persistent] = 0.0
+                self.db_h_f[persistent] = 0.0
+                self.db_s_f[persistent] = 0.0
     
     def valid_pred(self, evidence, etype):
         if etype in etypes:
-            if evidence in self.events or evidence in self.percepts:
+            if evidence in self.events:
                 return True
             else:
                 return False
@@ -773,7 +716,7 @@ class Main():
 
         if etype  == 'event':
             if evidence in self.events:
-                predicate = 'involves_event(S,' + evidence + ')'
+                predicate = 'involves(S,' + evidence + ')'
                 self.db_h[predicate] = 0.0
                 self.db_s[predicate] = 0.0
                 if self.fork_active:
@@ -781,16 +724,8 @@ class Main():
                     self.db_s_f[predicate] = 0.0
             else:
                 resp = 'Evidence not modelled in MLN.'
-        elif etype == 'percept':
-            if evidence in self.percepts:
-                predicate = 'involves_percept(S,' + evidence + ')'
-                self.db_s[predicate] = 0.0
-                if self.fork_active:
-                    self.db_s_f[predicate] - 0.0
-            else:
-                resp = 'Evidence not modelled in MLN.'
         else:
-            resp = 'Invalid evidence type. Valid types are: event or percept' 
+            resp = 'Invalid evidence type. Valid types are: event' 
 
         self.logger.log(resp)
         return resp

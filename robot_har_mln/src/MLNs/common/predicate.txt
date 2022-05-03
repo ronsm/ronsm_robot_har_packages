@@ -1,4 +1,2 @@
 class(a, activity?)
-involves_event(a, event)
-#fuzzy
-involves_percept(a, percept)
+involves(a, event)

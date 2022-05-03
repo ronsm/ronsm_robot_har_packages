@@ -58,7 +58,7 @@ class TrainDBConsistencyHelper():
                 if p[0:5] == 'class':
                     adl = p
                     sample.remove(p)
-                elif len(p) > 14 and p[0:14] == 'involves_event':
+                elif len(p) > 8 and p[0:8] == 'involves':
                     events.append(p)
             adls_h.append((adl, events))
 
@@ -69,11 +69,11 @@ class TrainDBConsistencyHelper():
                 if p[0:5] == 'class':
                     adl = p
                     sample.remove(p)
-                elif len(p) > 14 and p[0:14] == 'involves_event':
+                elif len(p) > 8 and p[0:8] == 'involves':
                     events.append(p)
             adls_s.append((adl, events))
 
-        # create empty disctionaries with keys as classes, values as empty arrays
+        # create empty dictionaries with keys as classes, values as empty arrays
         adls_h_dict = {}
         adls_s_dict = {}
 

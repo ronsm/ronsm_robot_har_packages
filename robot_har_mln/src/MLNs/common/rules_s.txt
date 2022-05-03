@@ -1,1 +1,1 @@
-0.0 involves_event(a,+event) => class(a,+activity)
+0.0 involves(a,+event) => class(a,+activity)
