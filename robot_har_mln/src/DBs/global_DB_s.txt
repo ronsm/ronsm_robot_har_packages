@@ -5,3 +5,9 @@ involves(S,CutleryDrawer)
 involves(S,DrinkwareCabinet)
 class(S,PreparingDrink)
 ---
+involves(S,DinnerwareCabinet)
+involves(S,Oven)
+involves(S,FoodCabinet)
+involves(S,Fridge)
+class(S,Cooking)
+---

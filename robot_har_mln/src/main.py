@@ -39,6 +39,9 @@ etypes = ['event']
 
 RESET = False
 
+MIN_SEGMENT_DEPTH = 2
+MIN_SEGMENT_CONF = 0.5
+
 class Main():
     _ros_reason_feedback = ronsm_messages.msg.har_reasonFeedback()
     _ros_reason_result = ronsm_messages.msg.har_reasonResult()
@@ -113,6 +116,10 @@ class Main():
         self.query_triggered = False
         self.label_save = None
         self.segment_save_e = None
+        self.s1_prediction_h_before_s2 = None
+        self.s1_prediction_s_before_s2 = None
+        self.s1_consistent_agreement = []
+        self.s2_consistent_agreement = []
 
         # Loads
         self.create_pred_store()
@@ -744,7 +751,10 @@ class Main():
         config['incremental'] = 1
         config['grammar'] = 'StandardGrammar'
         config['logic'] = 'FirstOrderLogic'
-        config['method'] = 'pseudo-log-likelihood'
+        # config['method'] = 'pseudo-log-likelihood'
+        config['method'] = 'DPLL'
+        config['epreds'] = 'involves'
+        config['qpreds'] = 'class'
         config['optimizer'] = 'bfgs'
         config['multicore'] = False
         config['profile'] = 0
@@ -779,7 +789,10 @@ class Main():
         config['incremental'] = 1
         config['grammar'] = 'StandardGrammar'
         config['logic'] = 'FirstOrderLogic'
-        config['method'] = 'pseudo-log-likelihood'
+        # config['method'] = 'pseudo-log-likelihood'
+        config['method'] = 'DPLL'
+        config['epreds'] = 'involves'
+        config['qpreds'] = 'class'
         config['optimizer'] = 'bfgs'
         config['multicore'] = False
         config['profile'] = 0
@@ -837,8 +850,10 @@ class Main():
 
         self.reason()
         
-        if not clear_e_pred_history and not self.fork_active and self.predictions_in_segment > 2:
+        if not clear_e_pred_history and not self.fork_active and self.predictions_in_segment > MIN_SEGMENT_DEPTH:
             consistent_h, consistent_s = self.tdch.is_consistent(self.predictions_h[-2][0], self.predictions_s[-2][0], self.pred_e_history[-1])
+            self.s1_prediction_h_before_s2 = self.predictions_h[-2][0]
+            self.s1_prediction_s_before_s2 = self.predictions_s[-2][0]
 
             if not consistent_s:
                 self.logger.log('Inconsistent event. Now considering that a new activity has occured...')
@@ -853,10 +868,10 @@ class Main():
         if self.fork_active:
             self.reason_f()
 
-            if self.predictions_in_segment_f > 1:
-                consistent_h, consistent_s = self.tdch.is_consistent(self.predictions_h[-1][0], self.predictions_s[-1][0], self.pred_e_history[-1])
+            if self.predictions_in_segment_f > MIN_SEGMENT_DEPTH: # OR MIN_SEGMENT_DEPTH - 1
+                consistent_h, consistent_s = self.tdch.is_consistent(self.s1_prediction_h_before_s2, self.s1_prediction_s_before_s2, self.pred_e_history[-1])
                 consistent_h_f, consistent_s_f = self.tdch.is_consistent(self.predictions_h_f[-1][0], self.predictions_s_f[-1][0], self.pred_e_history[-1])
-                
+
                 if self.predictions_s[-1][0] == self.predictions_s_f[-1][0]:
                     agree = True
                 else:
@@ -865,10 +880,36 @@ class Main():
                 log = 'Consistency checking (consistent_s, consistent_s_f, agree): ' + str(consistent_s) + ', ' + str(consistent_s_f) + ', ' + str(agree)
                 self.logger.log(log)
 
-                if not self.query_triggered:
-                    self.qs.query_select(self.predictions_h[-1][0], self.predictions_s[-1][0], self.predictions_h_f[-1][0], self.predictions_s_f[-1][0], consistent_s, consistent_s_f, agree)
-                    self.segment_save_e = None
-                    self.query_triggered = True
+                # check whether we can finalise segment
+                self.s1_consistent_agreement.append(consistent_s)
+                self.s2_consistent_agreement.append(consistent_s_f)
+                s2_conf = self.predictions_s_f[-1][1]
+
+                s1_count = 0
+                for entry in self.s1_consistent_agreement:
+                    if entry == False:
+                        s1_count = s1_count + 1
+                if s1_count == len(self.s1_consistent_agreement):
+                    s1_all_false = True
+                else:
+                    s1_all_false = False
+
+                s2_count = 0
+                for entry in self.s2_consistent_agreement:
+                    if entry == True:
+                        s2_count = s2_count + 1
+                if s2_count == len(self.s2_consistent_agreement):
+                    s2_all_true = True
+                else:
+                    s2_all_true = False
+
+                if s1_all_false and s2_all_true and s2_conf > MIN_SEGMENT_CONF:
+                    self.swap_fork_to_main_working_memory()
+                else:
+                    if not self.query_triggered:
+                        self.qs.query_select(self.predictions_h[-1][0], self.predictions_s[-1][0], self.predictions_h_f[-1][0], self.predictions_s_f[-1][0], consistent_s, consistent_s_f, agree)
+                        self.segment_save_e = None
+                        self.query_triggered = True
 
     def clear_pred_history(self):
         self.segment_save_e = copy.deepcopy(self.pred_e_history)
@@ -921,13 +962,14 @@ class Main():
             self.predictions_h = copy.deepcopy(self.predictions_h_f)
             self.predictions_s = copy.deepcopy(self.predictions_s_f)
 
-            print(self.pred_e_history)
             self.pred_e_history = self.pred_e_history[-self.predictions_in_segment_f:]
-            print(self.pred_e_history)
 
             self.predictions_in_segment = copy.deepcopy(self.predictions_in_segment_f)
 
             self.clear_pred_history_f()
+
+            self.s1_consistent_agreement = []
+            self.s2_consistent_agreement = []
             
             self.fork_active = False
 
