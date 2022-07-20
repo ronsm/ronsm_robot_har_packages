@@ -7,37 +7,43 @@ from tmc_msgs.msg import Voice
 
 from log import Log
 
+OUTPUT = 'ROBOT'
+
 class InputOutput(object):
     def __init__(self):
         self.id = 'input_outpt'
         self.logger = Log(self.id)
 
-        # self.tts_engine = pyttsx3.init()
-        # self.tts_engine.setProperty("rate", 140)
-
-        self.tts_pub = rospy.Publisher('/talk_request', Voice, queue_size=10)
+        if OUTPUT == 'ROBOT':
+            self.tts_pub = rospy.Publisher('/talk_request', Voice, queue_size=10)
+        elif OUTPUT == 'LOCAL':
+            self.tts_engine = pyttsx3.init()
+            self.tts_engine.setProperty("rate", 110)
+        else:
+            self.logger.log_warn('Invalid output mode specified.')
+            exit(0)
 
         self.r = sr.Recognizer()
-        # self.r.energy_treshold = 375
         sr.Microphone.list_microphone_names()
 
         self.logger.log_great('Ready.')
 
     def say(self, text):
-        # self.tts_engine.say(text)
-        # self.tts_engine.runAndWait()
+        if OUTPUT == 'ROBOT':
+            log = 'Sending to HSR TTS: ' + text
+            self.logger.log(log)
 
-        log = 'Sending to HSR TTS: ' + text
-        self.logger.log(log)
+            msg = Voice()
+            msg.language = 1
+            msg.interrupting = True
+            msg.queueing = True
+            msg.sentence = text
 
-        msg = Voice()
-        msg.language = 1
-        msg.interrupting = True
-        msg.queueing = True
-        msg.sentence = text
-
-        self.tts_pub.publish(msg)
-
+            self.tts_pub.publish(msg)
+        elif OUTPUT == 'LOCAL':
+            self.tts_engine.say(text)
+            self.tts_engine.runAndWait()
+            
         rospy.sleep(5)
 
     def listen(self):
