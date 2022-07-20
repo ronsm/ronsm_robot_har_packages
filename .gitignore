@@ -1,5 +1,6 @@
 *.mln
 *.p
 *.pickle
+robot_har_mln/src/MCs/*.png
 !default_MLN_h.mln
 !default_MLN_s.mln
