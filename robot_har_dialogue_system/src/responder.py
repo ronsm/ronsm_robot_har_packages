@@ -5,12 +5,14 @@ from log import Log
 from input_output import InputOutput
 
 class Responder(object):
-    def __init__(self):
+    def __init__(self, rel_path):
         self.id = 'responder'
 
         self.logger = Log(self.id)
 
-        self.io = InputOutput()
+        self.rel_path = rel_path
+
+        self.io = InputOutput(self.rel_path)
 
         self.logger.log_great('Ready.')
 

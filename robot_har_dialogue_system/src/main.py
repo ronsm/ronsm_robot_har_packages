@@ -24,17 +24,21 @@ class Main():
         self.logger = Log(self.id)
         self.logger.startup_msg()
 
+        # ROSPack Path
+        rospack = rospkg.RosPack()
+        self.rel_path = rospack.get_path('robot_har_dialogue_system')
+
         self.lock = 0
 
         self.rospack = rospkg.RosPack()
 
         self.dataset = 'semantic_ADLs'
         self.label_linker = LabelLinker(self.dataset)
-        self.dialogue_manager = DialogueManager(self.label_linker)
+        self.dialogue_manager = DialogueManager(self.rel_path, self.label_linker)
 
-        self.io = InputOutput()
+        self.io = InputOutput(self.rel_path)
         self.hi = HARInterface()
-        self.responder = Responder()
+        self.responder = Responder(self.rel_path)
 
         primary_interp_path = self.rospack.get_path('robot_har_dialogue_system') + '/src/rasa/primary/models/' + rasa_primary_model + '/nlu'
         self.primary_interp = Interpreter.load(primary_interp_path)

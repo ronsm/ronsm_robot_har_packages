@@ -80,6 +80,7 @@ class Main():
         else:
             self.asm = ADLSequenceModeller(self.rel_path, reset=False)
             self.arm = ADLRuleModeller(self.rel_path, reset=False)
+        self.asm.start_sequence('predict')
 
         # Reset Global DB
         if RESET:
@@ -176,19 +177,16 @@ class Main():
         base_path = self.rel_path + '/src/MLNs/common/'
 
         event_path = base_path + 'event.txt'
-        percept_path = base_path + 'percept.txt'
         predicate_path = base_path + 'predicate.txt'
         rules_h_path = base_path + 'rules_h.txt'
         rules_s_path = base_path + 'rules_s.txt'
 
         event_file = open(event_path, 'r')
-        percept_file = open(percept_path, 'r')
         predicate_file = open(predicate_path, 'r')
         rules_h_file = open(rules_h_path, 'r')
         rules_s_file = open(rules_s_path, 'r')
 
         self.events = []
-        self.percepts = []
         self.events_persist = []
         self.predicates = []
         self.rules_h = []
@@ -204,11 +202,6 @@ class Main():
                 pred_persist = 'involves(S,' + self.events[i] + ')'
                 pred_cancel = 'involves(S,' + self.events[i+1] + ')'
                 self.events_persist.append((pred_persist, pred_cancel))
-
-        for line in percept_file:
-            entry = line.rstrip('\n')
-            self.events.append(entry)
-            self.percepts.append(entry)
 
         for line in predicate_file:
             self.predicates.append(line.rstrip('\n'))
@@ -333,12 +326,11 @@ class Main():
 
     def ros_add_rule_start_callback(self, msg):
         self.mode = 'train'
-        self.asm.start_sequence()
+        self.asm.start_sequence('train')
         self.logger.log('Entered training mode.')
 
     def ros_add_rule_stop_callback(self, msg):
         self.mode = 'predict'
-        self.asm.stop_sequence()
         self.logger.log('Entered predict mode.')
 
     def ros_add_rule_label_callback(self, msg):
@@ -352,7 +344,20 @@ class Main():
             self.logger.log(log)
             self.label_save = label
         else:
-            log = 'System is invalid mode, unable to handle label callback.'
+            log = 'System is in invalid mode, unable to handle label callback.'
+            self.logger.log_warn(log)
+
+    def ros_add_rule_label_callback_internal(self, label):
+        if self.mode == 'train':
+            log = 'Labelling new rule as: ' + label
+            self.logger.log(log)
+            self.save_rule(label)
+        elif self.mode == 'predict':
+            log = 'Received new label for query: ' + label
+            self.logger.log(log)
+            self.label_save = label
+        else:
+            log = 'System is in invalid mode, unable to handle label callback.'
             self.logger.log_warn(log)
 
     def ros_mln_train_callback(self, msg):
@@ -403,7 +408,8 @@ class Main():
         label_s = label
         label_h = self.ahh.get_parent(label_s)
 
-        self.asm.label_sequence(label_s)
+        self.asm.stop_sequence('train')
+        self.asm.label_sequence('train', label_s)
 
         self.print_mlns()
 
@@ -432,7 +438,7 @@ class Main():
         self.mln_h << rule_str_h
         self.mln_s << rule_str_s
 
-        self.asm.label_sequence(label)
+        self.asm.label_sequence('train', label_s)
 
         self.print_mlns()
 
@@ -679,7 +685,8 @@ class Main():
 
         if self.valid_pred(evidence, etype):
             self.add_pred(evidence, etype, room)
-            self.predict_next_cycle = True
+            if self.mode == 'predict':
+                self.predict_next_cycle = True
             resp = 'OK. Added: (' + etype + ',' + evidence + ')'
             self.last_add = etype
         else:
@@ -692,12 +699,14 @@ class Main():
         pred = 'involves(S,' + evidence + ')'
 
         if self.mode == 'train':
-            self.asm.add_to_sequence(etype, evidence)
+            self.asm.action('train', 'human', evidence)
             self.ps['events'].append(pred)
         elif self.mode == 'predict':
+            self.asm.action('predict', 'human', evidence)
             self.s1_db_h[pred] = 1.0
             self.s1_db_s[pred] = 1.0
             if self.s2_active:
+                self.asm.action('predict', 'human', evidence)
                 self.s2_db_h[pred] = 1.0
                 self.s2_db_s[pred] = 1.0
             self.room_e_history.append(room)
@@ -858,6 +867,7 @@ class Main():
             if not s1_consistent_s:
                 self.logger.log('Inconsistent event. Now considering that a new activity has occured...')
                 self.s2_active = True
+                self.asm.set_s2_active(True)
 
                 self.s2_db_h[self.pred_e_history[-1]] = 1.0
                 self.s2_db_s[self.pred_e_history[-1]] = 1.0
@@ -932,6 +942,8 @@ class Main():
 
         self.s1_predictions_in_segment = 0
 
+        self.asm.start_sequence('predict')
+
     def s2_clear_pred_history(self):
         for i in range(0, len(self.pred_e_history)):
             self.s2_db_h[self.pred_e_history[i]] = 0.0
@@ -940,6 +952,8 @@ class Main():
         self.s2_predictions_in_segment = 0
 
         self.query_triggered = False
+
+        self.asm.set_s2_active(False)
 
     def is_persistent(self, pred):
         for pair in self.events_persist:
@@ -973,6 +987,8 @@ class Main():
             
             self.s2_active = False
 
+            self.asm.swap_s2_to_s1()
+
     def check_for_label(self):
         if self.label_save != None:
             return True
@@ -995,8 +1011,28 @@ if __name__ == '__main__':
 
     @app.route('/reset', methods = ['POST'])
     def reset_handler():
-
         m.reset_working_memory()
+
+        return 'OK'
+
+    @app.route('/train_start', methods = ['POST'])
+    def train_start_handler():
+        m.ros_add_rule_start_callback(None)
+
+        return 'OK'
+
+    @app.route('/train_stop', methods = ['POST'])
+    def train_stop_handler():
+        m.ros_add_rule_stop_callback(None)
+
+        return 'OK'
+
+    @app.route('/train_label', methods = ['POST'])
+    def train_label_handler():
+        data = request.get_json()
+        label = data['label']
+
+        m.ros_add_rule_label_callback_internal(label)
 
         return 'OK'
 

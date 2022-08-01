@@ -23,22 +23,21 @@ class LabelEncapsulator(object):
         self.semantic_description = semantic_description
 
 class DialogueManager(object):
-    def __init__(self, label_linker):
+    def __init__(self, rel_path, label_linker):
         self.id = 'dialogue_manager'
 
         self.logger = Log(self.id)
 
         self.label_linker = label_linker
 
-        rospack = rospkg.RosPack()
-        self.rel_path = rospack.get_path('robot_har_dialogue_system')
+        self.rel_path = rel_path
 
         self.aiml = aiml.Kernel()
         aiml_path = self.rel_path + '/src/std-startup.xml'
         self.aiml.learn(aiml_path)
         self.aiml.respond('load aiml go')
 
-        self.responder = Responder()
+        self.responder = Responder(self.rel_path)
 
         self.semantic_ADLs = SemanticADLs()
         self.labels_dict = self.semantic_ADLs.get_semantic_ADLs()
@@ -48,7 +47,7 @@ class DialogueManager(object):
         self.follow_up = False
         self.options = ['null', 'null']
 
-        self.io = InputOutput()
+        self.io = InputOutput(self.rel_path)
 
         self.pub_ros_arm_add_rule = rospy.Publisher('/robot_har_mln/arm/add_rule', har_arm_basic, queue_size=10)
         self.pub_ros_har_label = rospy.Publisher('/robot_har_dialogue_system/label', String, queue_size=10)
@@ -93,6 +92,7 @@ class DialogueManager(object):
             self.logger.log_warn('Invalid affirmation response. AIML error.')
             self.send_label_error()
 
+        self.aiml.setPredicate('affirm_label', '')
         self.aiml.setPredicate('user_label', '')
 
     def story_query_2_labels(self, reduced):

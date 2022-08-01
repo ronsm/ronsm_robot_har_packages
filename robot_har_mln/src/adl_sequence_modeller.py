@@ -66,6 +66,13 @@ class ADLSequenceModeller():
         self.status_file = self.pickle_adl_path + 'status.pickle'
 
         self.markov_chains = {}
+        self.markov_chains_states = {}
+
+        self.s2_active = False
+        self.s1 = []
+        self.s2 = []
+        self.s1_index = 0
+        self.s2_index = 0
 
         if reset:
             self.logger.log_warn(
@@ -87,7 +94,7 @@ class ADLSequenceModeller():
 
         self.logger.log_great('Ready.')
 
-# File Creation
+    # File Creation
 
     def create_adl_files(self):
         adls = self.adlhh.get_children()
@@ -106,9 +113,38 @@ class ADLSequenceModeller():
         obj['sequences'] = []
         return obj
 
-# Sequence Modeller
+    # Routing
 
-    def start_sequence(self):
+    def start_sequence(self, mode):
+        if mode == 'train':
+            self.train_start_sequence()
+        elif mode == 'predict':
+            self.predict_start_sequence()
+        else:
+            msg = 'Invalid mode passed to start_sequence.'
+            self.logger.log_warn(msg)
+
+    def action(self, mode, agent, action, pose=None):
+        if mode == 'train':
+            self.train_action(agent, action, None)
+        elif mode == 'predict':
+            self.predict_action(agent, action, None)
+        else:
+            msg = 'Invalid mode passed to action.'
+            self.logger.log_warn(msg)
+
+    def stop_sequence(self, mode):
+        self.train_stop_sequence()
+
+    def help_request(self, mode, help_type):
+        self.train_help_request(help_type)
+
+    def label_sequence(self, mode, adl):
+        self.train_label_sequence(adl)
+
+    # Sequence Modeller (Training)
+
+    def train_start_sequence(self):
         self.seq = []
         self.start_time = perf_counter()
         self.prev_time = 0.0
@@ -118,7 +154,7 @@ class ADLSequenceModeller():
             self.actions), time_object, None, None, 1)
         self.seq.append(entry)
 
-    def action(self, agent, action, pose=None):
+    def train_action(self, agent, action, pose=None):
         if not self.block_entries:
             time = perf_counter() - self.start_time
             elapsed = time - self.prev_time
@@ -130,13 +166,13 @@ class ADLSequenceModeller():
             self.seq.append(entry)
             self.prev_time = time
 
-    def help_request(self, help_type):
+    def train_help_request(self, help_type):
         if self.seq[-1].help == None:
             self.seq[-1].help = HelpRequest(True, [help_type])
         else:
             self.seq[-1].help.help_types.append(help_type)
 
-    def stop_sequence(self):
+    def train_stop_sequence(self):
         self.block_entries = True
         time = perf_counter() - self.start_time
         elapsed = time - self.prev_time
@@ -146,7 +182,7 @@ class ADLSequenceModeller():
                            time_object, None, None, 1)
         self.seq.append(entry)
 
-    def label_sequence(self, adl):
+    def train_label_sequence(self, adl):
         path = self.pickle_adl_path + adl + '.pickle'
         obj = pickle.load(open(path, 'rb'))
 
@@ -154,7 +190,98 @@ class ADLSequenceModeller():
 
         pickle.dump(obj, open(path, 'wb'))
 
+        # self.update_markov_chains()
+
         self.block_entries = False
+
+    # Sequence Predictions (Predict)
+
+    def predict_start_sequence(self):
+        self.s1 = []
+        self.s1_index = 0
+        self.start_time = perf_counter()
+        self.prev_time = 0.0
+        self.actions = ['START']
+        time_object = Times(0.0, 0.0)
+        entry = ChainState(self.s1_index, 'START', 'START', copy.deepcopy(
+            self.actions), time_object, None, None, 1)
+        self.s1.append(entry)
+        self.s1_index = self.s1_index + 1
+
+    def predict_action(self, agent, action, pose=None):
+        time = perf_counter() - self.start_time
+        elapsed = time - self.prev_time
+        time_object = Times("{:.2f}".format(
+            time), "{:.2f}".format(elapsed))
+        self.actions.append(action)
+        entry = ChainState(self.s1_index, agent, action, copy.deepcopy(
+            self.actions), time_object, pose, None, 1)
+        self.s1.append(entry)
+        self.prev_time = time
+        self.s1_index = self.s1_index + 1
+
+        if self.s2_active:
+            time = perf_counter() - self.start_time
+            elapsed = time - self.prev_time
+            time_object = Times("{:.2f}".format(
+                time), "{:.2f}".format(elapsed))
+            self.actions.append(action)
+            entry = ChainState(self.s2_index, agent, action, copy.deepcopy(
+                self.actions), time_object, pose, None, 1)
+            self.s2.append(entry)
+            self.prev_time = time
+            self.s2_index = self.s2_index + 1
+
+        self.predict_step()
+
+    def predict_step(self):
+        # s1
+        s1_candidates = []
+        if len(self.s1) > 0:
+            for adl, chain in self.markov_chains_states.items():
+                for entry in chain:
+                    if collections.Counter(self.s1[-1].state) == collections.Counter(entry.state):
+                        if self.s1[-1].state == entry.state:
+                            s1_candidates.append((adl, entry.uid, 'exact', entry.state))
+                        else:
+                            s1_candidates.append((adl, entry.uid, 'approx', entry.state))
+
+        msg = 'S1 Candidates: ' + str(s1_candidates)
+        self.logger.log(msg)
+
+        # s2
+        if self.s2_active:
+            s2_candidates = []
+            if len(self.s2) > 0:
+                for adl, chain in self.markov_chains_states.items():
+                    for entry in chain:
+                        if collections.Counter(self.s2[-1].state) == collections.Counter(entry.state):
+                            if self.s2[-1].state == entry.state:
+                                s2_candidates.append((adl, entry.uid, 'exact', entry.state))
+                            else:
+                                s2_candidates.append((adl, entry.uid, 'approx', entry.state))
+
+            msg = 'S2 Candidates: ' + str(s2_candidates)
+            self.logger.log(msg)
+
+    def swap_s2_to_s1(self):
+        self.s1 = copy.deepcopy(self.s2)
+        self.set_s2_active(False)
+
+    def set_s2_active(self, active):
+        self.s2_active = active
+
+        if active:
+            self.s2 = []
+            self.s2_index = 0
+            self.start_time = perf_counter()
+            self.prev_time = 0.0
+            self.actions = ['START']
+            time_object = Times(0.0, 0.0)
+            entry = ChainState(self.s2_index, 'START', 'START', copy.deepcopy(
+                self.actions), time_object, None, None, 1)
+            self.s2.append(entry)
+            self.s2_index = self.s2_index + 1
 
     # Markov Chains
 
@@ -164,11 +291,13 @@ class ADLSequenceModeller():
 
         # create the Markov Chain
         unique_chain_states = []
-
         if len(obj['sequences']) == 0:
             msg = 'Cannot create Markov Chain for ' + adl + ', no sample sequences exist.'
             self.logger.log(msg)
             return
+        else:
+            msg = 'Creating Markov Chain for ' + adl + '.'
+            self.logger.log(msg)
 
         for seq in obj['sequences']:
             for state in seq:
@@ -209,7 +338,6 @@ class ADLSequenceModeller():
 
         G = nx.from_numpy_array(weights, create_using=nx.DiGraph)
 
-        # pos = nx.spring_layout(G)
         pos = nx.nx_agraph.graphviz_layout(G, prog='neato')
         nx.draw_networkx_nodes(G, pos, node_size=800)
         nx.draw_networkx_edges(G, pos, edgelist=G.edges(),
@@ -217,7 +345,6 @@ class ADLSequenceModeller():
 
         nx.draw_networkx_labels(G, pos, font_size=20, font_family="sans-serif")
 
-        # edge_labels = nx.get_edge_attributes(G, "weight")
         edge_labels = dict([((u,v,), f"{d['weight']:.2f}") for u,v,d in G.edges(data=True)])
         nx.draw_networkx_edge_labels(G, pos, edge_labels)
 
@@ -225,7 +352,7 @@ class ADLSequenceModeller():
         ax.margins(0.08)
         plt.axis("off")
         plt.tight_layout()
-        plt.show(block=False)
+        # plt.show(block=False)
 
         png_file = 'MCs/' + adl + '.png'
         plt.savefig(png_file)
@@ -238,6 +365,7 @@ class ADLSequenceModeller():
         pprint.pprint(unique_chain_states)
 
         self.markov_chains[adl] = G
+        self.markov_chains_states[adl] = unique_chain_states
 
     def is_unique_chain_state(self, action, unique_chain_states):
         for unique_chain_state in unique_chain_states:
@@ -253,112 +381,115 @@ class ADLSequenceModeller():
         for adl in adls:
             self.update_markov_chain(adl)
 
-
 if __name__ == '__main__':
     ase = ADLSequenceModeller('/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)
 
-    # ase.start_sequence()
+    # ase.start_sequence('train')
     # sleep(0.2)
-    # ase.action('human', 'Kettle')
+    # ase.action('train', 'human', 'Kettle')
     # sleep(0.4)
-    # ase.help_request('ExampleHelp')
+    # ase.train_help_request('ExampleHelp')
     # sleep(0.2)
     # pose = RobotPose(1.0, 1.0, 3.14, -0.8, 0.4)
-    # ase.action('robot', 'OpenDrawer', pose=pose)
+    # ase.action('train', 'robot', 'OpenDrawer', pose=pose)
     # sleep(0.3)
-    # ase.stop_sequence()
-    # ase.label_sequence('Cooking')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'Cooking')
 
-    # ase.start_sequence()
+    # ase.start_sequence('train')
     # sleep(0.2)
-    # ase.action('human', 'Kettle')
+    # ase.action('train', 'human', 'Kettle')
     # sleep(0.4)
-    # ase.help_request('ExampleHelp')
+    # ase.train_help_request('ExampleHelp')
     # sleep(0.2)
     # pose = RobotPose(1.0, 1.0, 3.14, -0.8, 0.4)
-    # ase.action('robot', 'OpenDrawer', pose=pose)
+    # ase.action('train', 'robot', 'OpenDrawer', pose=pose)
     # sleep(0.3)
-    # ase.stop_sequence()
-    # ase.label_sequence('Cooking')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'Cooking')
 
-    # ase.start_sequence()
-    # ase.action('human', 'Kettle')
-    # ase.action('human', 'Tap')
-    # ase.action('human', 'Bin')
-    # ase.action('human', 'DrinkwareCabinet')
-    # ase.action('human', 'CutleryDrawer')
-    # ase.stop_sequence()
-    # ase.label_sequence('PreparingDrink')
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'Tap')
+    # ase.action('train', 'human', 'Bin')
+    # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.action('train', 'human', 'CutleryDrawer')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'PreparingDrink')
 
-    # ase.start_sequence()
-    # ase.action('human', 'Bin')
-    # ase.action('human', 'Tap')
-    # ase.action('human', 'Kettle')
-    # ase.action('human', 'DrinkwareCabinet')
-    # ase.action('human', 'CutleryDrawer')
-    # ase.stop_sequence()
-    # ase.label_sequence('PreparingDrink')
+    ase.start_sequence('train')
+    ase.action('train', 'human', 'Bin')
+    ase.action('train', 'human', 'Tap')
+    ase.action('train', 'human', 'Kettle')
+    ase.action('train', 'human', 'DrinkwareCabinet')
+    ase.action('train', 'human', 'CutleryDrawer')
+    ase.stop_sequence('train')
+    ase.label_sequence('train', 'PreparingDrink')
 
-    # ase.start_sequence()
-    # ase.action('human', 'Bin')
-    # ase.action('human', 'Tap')
-    # ase.action('human', 'Kettle')
-    # ase.action('human', 'DrinkwareCabinet')
-    # ase.action('human', 'CutleryDrawer')
-    # ase.stop_sequence()
-    # ase.label_sequence('PreparingDrink')
+    ase.start_sequence('train')
+    ase.action('train', 'human', 'Bin')
+    ase.action('train', 'human', 'Tap')
+    ase.action('train', 'human', 'Kettle')
+    ase.action('train', 'human', 'DrinkwareCabinet')
+    ase.action('train', 'human', 'CutleryDrawer')
+    ase.stop_sequence('train')
+    ase.label_sequence('train', 'PreparingDrink')
 
-    ase.start_sequence()
-    ase.action('human', 'Tap')
-    ase.action('human', 'Bin')
-    ase.action('human', 'Kettle')
-    ase.action('human', 'DrinkwareCabinet')
-    ase.action('human', 'CutleryDrawer')
-    ase.stop_sequence()
-    ase.label_sequence('PreparingDrink')
+    ase.start_sequence('train')
+    ase.action('train', 'human', 'Tap')
+    ase.action('train', 'human', 'Bin')
+    ase.action('train', 'human', 'Kettle')
+    ase.action('train', 'human', 'DrinkwareCabinet')
+    ase.action('train', 'human', 'CutleryDrawer')
+    ase.stop_sequence('train')
+    ase.label_sequence('train', 'PreparingDrink')
 
-    ase.start_sequence()
-    ase.action('human', 'Tap')
-    ase.action('human', 'Bin')
-    ase.action('human', 'Kettle')
-    ase.action('human', 'DrinkwareCabinet')
-    ase.action('human', 'CutleryDrawer')
-    ase.stop_sequence()
-    ase.label_sequence('PreparingDrink')
+    ase.start_sequence('predict', segment=1)
+    ase.action('predict', 'human', 'Bin', segment=1)
+    ase.action('predict', 'human', 'Tap', segment=1)
 
-    ase.start_sequence()
-    ase.action('human', 'Kettle')
-    ase.action('human', 'Tap')
-    ase.action('human', 'Bin')
-    ase.action('human', 'DinnerwareCabinet')
-    ase.action('human', 'DrinkwareCabinet')
-    ase.stop_sequence()
-    ase.label_sequence('PreparingDrink')
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Tap')
+    # ase.action('train', 'human', 'Bin')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.action('train', 'human', 'CutleryDrawer')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'PreparingDrink')
 
-    # ase.start_sequence()
-    # ase.action('human', 'Kettle')
-    # ase.action('human', 'Tap')
-    # ase.action('human', 'DrinkwareCabinet')
-    # ase.action('human', 'CutleryDrawer')
-    # ase.stop_sequence()
-    # ase.label_sequence('PreparingDrink')
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'Tap')
+    # ase.action('train', 'human', 'Bin')
+    # ase.action('train', 'human', 'DinnerwareCabinet')
+    # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'PreparingDrink')
 
-    # ase.start_sequence()
-    # ase.action('human', 'Kettle')
-    # ase.action('human', 'Tap')
-    # ase.action('human', 'DrinkwareCabinet')
-    # ase.action('human', 'CutleryDrawer')
-    # ase.stop_sequence()
-    # ase.label_sequence('PreparingDrink')
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'Tap')
+    # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.action('train', 'human', 'CutleryDrawer')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'PreparingDrink')
 
-    # ase.start_sequence()
-    # ase.action('event', 'event_name')
-    # ase.action('action', 'action_name')
-    # ase.stop_sequence()
-    # ase.label_sequence('Working')
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'Tap')
+    # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.action('train', 'human', 'CutleryDrawer')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'PreparingDrink')
 
-    # ase.start_sequence()
-    # ase.action('event', 'event_name')
-    # ase.action('action', 'action_name')
-    # ase.stop_sequence()
-    # ase.label_sequence('Sleeping')
+    # ase.start_sequence('train')
+    # ase.action('train', 'event', 'event_name')
+    # ase.action('train', 'action', 'action_name')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'Working')
+
+    # ase.start_sequence('train')
+    # ase.action('train', 'event', 'event_name')
+    # ase.action('train', 'action', 'action_name')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'Sleeping')

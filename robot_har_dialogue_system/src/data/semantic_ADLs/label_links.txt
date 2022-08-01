@@ -6,7 +6,7 @@ Sleeping:Sleeping:sleeping
 LeavingHome:LeavingHome:going out
 Bathing:Bathing:bathing
 Cooking:Cooking:cooking
-PreparingDrink:PreparingDrink:prearing a drink
+PreparingDrink:PreparingDrink:preparing a drink
 Eating:Eating:eating
 Snacking:Snacking:having a snack
 WatchingTV:WatchingTV:watching TV

@@ -456,6 +456,20 @@
     </category>
 
     <category>
+        <pattern>THAT S CORRECT</pattern>
+        <template>
+            <srai>AFFIRM LABEL</srai>
+        </template>
+    </category>
+
+    <category>
+        <pattern>THAT S RIGHT</pattern>
+        <template>
+            <srai>AFFIRM LABEL</srai>
+        </template>
+    </category>
+
+    <category>
         <pattern>THAT IS NOT CORRECT</pattern>
         <template>
             <srai>DENY LABEL</srai>

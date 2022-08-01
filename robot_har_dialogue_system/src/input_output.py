@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import pyttsx3
 import speech_recognition as sr
+from playsound import playsound
 import rospy
 
 from tmc_msgs.msg import Voice
@@ -10,9 +11,11 @@ from log import Log
 OUTPUT = 'ROBOT'
 
 class InputOutput(object):
-    def __init__(self):
+    def __init__(self, rel_path):
         self.id = 'input_outpt'
         self.logger = Log(self.id)
+
+        self.rel_path = rel_path
 
         if OUTPUT == 'ROBOT':
             self.tts_pub = rospy.Publisher('/talk_request', Voice, queue_size=10)
@@ -51,6 +54,8 @@ class InputOutput(object):
             log = 'Adjusting for ambient noise...'
             self.logger.log(log)
             self.r.adjust_for_ambient_noise(source)
+            path = self.rel_path + '/src/sounds/tone_beep.wav'
+            playsound(path)
             log = 'Say something...'
             self.logger.log(log)
             try:
