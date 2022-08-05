@@ -78,11 +78,11 @@ class Main():
             self.hi.start_teaching_adl()
             self.responder.start_teaching_adl()
         elif intent == 'end_teaching_adl':
-            self.hi.stop_teaching_adl()
             self.responder.stop_teaching_adl()
             label = self.dialogue_manager.story_query_all_labels_teaching()
             if label != '':
                 self.hi.label_teaching_adl(label)
+            self.hi.stop_teaching_adl() # happens here bc robot_har_mln expects start, label, stop ^\_(*.*)_/^
         elif intent == 'register_marker':
             self.hi.register_marker()
         elif intent == 'look_at_marker':

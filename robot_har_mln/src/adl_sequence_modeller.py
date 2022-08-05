@@ -16,21 +16,28 @@ import numpy as np
 from graph_tool.all import *
 import networkx as nx
 import matplotlib.pyplot as plt
-
+import rospy
 from regex import D
 
 from adl_hierarchy_helper import ADLHierarchyHelper
 from log import Log
+
+from std_msgs.msg import Bool
+from geometry_msgs.msg import Pose2D
+from ronsm_messages.msg import har_percepts, har_percept
+
 
 @dataclass
 class Times:
     global_time: float
     time_since_last: float
 
+
 @dataclass
 class HelpRequest:
     help_requested: bool
     help_types: List[str]
+
 
 @dataclass
 class RobotPose:
@@ -40,6 +47,12 @@ class RobotPose:
     head_rot: float
     head_height: float
 
+
+class Percept:
+    name: str
+    prob: float
+
+
 @dataclass
 class ChainState:
     uid: Optional[int]
@@ -47,9 +60,12 @@ class ChainState:
     action: str
     state: List[str]
     time: Times
-    robot_pose: Optional[RobotPose]
+    percepts: Optional[List[Percept]]
+    manual_alignment: Optional[bool]
+    robot_pose: Optional[Pose2D]
     help: Optional[HelpRequest]
     count: int
+
 
 class ADLSequenceModeller():
     def __init__(self, rel_path, reset=False):
@@ -64,6 +80,16 @@ class ADLSequenceModeller():
         self.pickle_adl_path = self.rel_path + '/src/pickle/ADLs/'
 
         self.status_file = self.pickle_adl_path + 'status.pickle'
+
+        # rospy.init_node('adl_sequence_modeller')
+        self.sub_pose = rospy.Subscriber(
+            '/robot_har_marker_utility/pose', Pose2D, callback=self.ros_callback_sub_pose)
+        self.current_pose = Pose2D()
+        self.sub_percept = rospy.Subscriber(
+            '/robot_har_percepts/percepts', har_percepts, callback=self.ros_callback_sub_percepts)
+        self.current_percepts = {}
+        self.sub_manual_alignment = rospy.Subscriber(
+            '/robot_har_marker_utility/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
 
         self.markov_chains = {}
         self.markov_chains_states = {}
@@ -124,11 +150,12 @@ class ADLSequenceModeller():
             msg = 'Invalid mode passed to start_sequence.'
             self.logger.log_warn(msg)
 
-    def action(self, mode, agent, action, pose=None):
+    def action(self, mode, agent, action):
+        self.current_percepts = {}
         if mode == 'train':
-            self.train_action(agent, action, None)
+            self.train_action(agent, action)
         elif mode == 'predict':
-            self.predict_action(agent, action, None)
+            self.predict_action(agent, action)
         else:
             msg = 'Invalid mode passed to action.'
             self.logger.log_warn(msg)
@@ -151,10 +178,10 @@ class ADLSequenceModeller():
         self.actions = ['START']
         time_object = Times(0.0, 0.0)
         entry = ChainState(None, 'START', 'START', copy.deepcopy(
-            self.actions), time_object, None, None, 1)
+            self.actions), time_object, None, None, self.current_pose, None, 1)
         self.seq.append(entry)
 
-    def train_action(self, agent, action, pose=None):
+    def train_action(self, agent, action):
         if not self.block_entries:
             time = perf_counter() - self.start_time
             elapsed = time - self.prev_time
@@ -162,7 +189,7 @@ class ADLSequenceModeller():
                 time), "{:.2f}".format(elapsed))
             self.actions.append(action)
             entry = ChainState(None, agent, action, copy.deepcopy(
-                self.actions), time_object, pose, None, 1)
+                self.actions), time_object, None, None, self.current_pose, None, 1)
             self.seq.append(entry)
             self.prev_time = time
 
@@ -179,7 +206,7 @@ class ADLSequenceModeller():
         time_object = Times("{:.2f}".format(time), "{:.2f}".format(elapsed))
         self.actions.append('END')
         entry = ChainState(None, 'END', 'END', self.actions,
-                           time_object, None, None, 1)
+                           time_object, None, None, self.current_pose, None, 1)
         self.seq.append(entry)
 
     def train_label_sequence(self, adl):
@@ -204,18 +231,18 @@ class ADLSequenceModeller():
         self.actions = ['START']
         time_object = Times(0.0, 0.0)
         entry = ChainState(self.s1_index, 'START', 'START', copy.deepcopy(
-            self.actions), time_object, None, None, 1)
+            self.actions), time_object, None, None, self.current_pose, None, 1)
         self.s1.append(entry)
         self.s1_index = self.s1_index + 1
 
-    def predict_action(self, agent, action, pose=None):
+    def predict_action(self, agent, action):
         time = perf_counter() - self.start_time
         elapsed = time - self.prev_time
         time_object = Times("{:.2f}".format(
             time), "{:.2f}".format(elapsed))
         self.actions.append(action)
         entry = ChainState(self.s1_index, agent, action, copy.deepcopy(
-            self.actions), time_object, pose, None, 1)
+            self.actions), time_object, None, None, self.current_pose, None, 1)
         self.s1.append(entry)
         self.prev_time = time
         self.s1_index = self.s1_index + 1
@@ -227,7 +254,7 @@ class ADLSequenceModeller():
                 time), "{:.2f}".format(elapsed))
             self.actions.append(action)
             entry = ChainState(self.s2_index, agent, action, copy.deepcopy(
-                self.actions), time_object, pose, None, 1)
+                self.actions), time_object, None, None, self.current_pose, None, 1)
             self.s2.append(entry)
             self.prev_time = time
             self.s2_index = self.s2_index + 1
@@ -242,9 +269,11 @@ class ADLSequenceModeller():
                 for entry in chain:
                     if collections.Counter(self.s1[-1].state) == collections.Counter(entry.state):
                         if self.s1[-1].state == entry.state:
-                            s1_candidates.append((adl, entry.uid, 'exact', entry.state))
+                            s1_candidates.append(
+                                (adl, entry.uid, 'exact', entry.state))
                         else:
-                            s1_candidates.append((adl, entry.uid, 'approx', entry.state))
+                            s1_candidates.append(
+                                (adl, entry.uid, 'approx', entry.state))
 
         msg = 'S1 Candidates: ' + str(s1_candidates)
         self.logger.log(msg)
@@ -257,9 +286,11 @@ class ADLSequenceModeller():
                     for entry in chain:
                         if collections.Counter(self.s2[-1].state) == collections.Counter(entry.state):
                             if self.s2[-1].state == entry.state:
-                                s2_candidates.append((adl, entry.uid, 'exact', entry.state))
+                                s2_candidates.append(
+                                    (adl, entry.uid, 'exact', entry.state))
                             else:
-                                s2_candidates.append((adl, entry.uid, 'approx', entry.state))
+                                s2_candidates.append(
+                                    (adl, entry.uid, 'approx', entry.state))
 
             msg = 'S2 Candidates: ' + str(s2_candidates)
             self.logger.log(msg)
@@ -279,7 +310,7 @@ class ADLSequenceModeller():
             self.actions = ['START']
             time_object = Times(0.0, 0.0)
             entry = ChainState(self.s2_index, 'START', 'START', copy.deepcopy(
-                self.actions), time_object, None, None, 1)
+                self.actions), time_object, None, None, self.current_pose, None, 1)
             self.s2.append(entry)
             self.s2_index = self.s2_index + 1
 
@@ -345,7 +376,8 @@ class ADLSequenceModeller():
 
         nx.draw_networkx_labels(G, pos, font_size=20, font_family="sans-serif")
 
-        edge_labels = dict([((u,v,), f"{d['weight']:.2f}") for u,v,d in G.edges(data=True)])
+        edge_labels = dict([((u, v,), f"{d['weight']:.2f}")
+                           for u, v, d in G.edges(data=True)])
         nx.draw_networkx_edge_labels(G, pos, edge_labels)
 
         ax = plt.gca()
@@ -356,7 +388,8 @@ class ADLSequenceModeller():
 
         png_file = 'MCs/' + adl + '.png'
         plt.savefig(png_file)
-        msg = 'Updated Markov Chain for "' + adl + '". Saved Markov Chain at: ' + png_file
+        msg = 'Updated Markov Chain for "' + adl + \
+            '". Saved Markov Chain at: ' + png_file
         self.logger.log(msg)
 
         pprint.pprint(weights)
@@ -381,8 +414,34 @@ class ADLSequenceModeller():
         for adl in adls:
             self.update_markov_chain(adl)
 
+    # ROS Callbacks
+    def ros_callback_sub_pose(self, msg):
+        self.current_pose = msg
+
+    def ros_callback_sub_percepts(self, msg):
+        for percept in msg.percepts:
+            self.current_percepts[percept.name] = percept.conf
+
+        percepts = []
+        for percept, conf in self.current_percepts.items():
+            p = Percept()
+            p.name = percept
+            p.conf = conf
+            percepts.append(p)
+
+        self.s1[-1].percepts = copy.deepcopy(percepts)
+        if self.s2_active:
+            self.s2[-1].percepts = copy.deepcopy(percepts)
+
+    def ros_callback_sub_manual_alignment(self, msg):
+        if msg.data:
+            self.s1[-1].manual_alignment = True
+            if self.s2_active:
+                self.s2[-1].manual_alignment = True
+
 if __name__ == '__main__':
-    ase = ADLSequenceModeller('/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)
+    ase = ADLSequenceModeller(
+        '/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)
 
     # ase.start_sequence('train')
     # sleep(0.2)
