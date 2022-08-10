@@ -7,7 +7,8 @@ import tf2_ros
 import math
 from hsrb_interface import Robot
 
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
+from geometry_msgs.msg import Pose2D
 from std_srvs.srv import Empty
 from tmc_msgs.msg import Voice
 
@@ -23,9 +24,10 @@ class Main():
         self.tfBuffer = tf2_ros.Buffer()
         self.tf = tf2_ros.TransformListener(self.tfBuffer)
 
-        self.sub_register_marker = rospy.Subscriber('robot_har_marker_utility/register_marker', String, callback=self.register_marker_callback)
+        self.sub_register_marker = rospy.Subscriber('/robot_har_marker_utility/register_marker', String, callback=self.register_marker_callback)
         self.sub_look_at_marker = rospy.Subscriber('/robot_har_marker_utility/look_at_marker', String, callback=self.look_at_marker_callback)
 
+        self.pub_aligned = rospy.Publisher('/robot_har_marker_utility/aligned', Bool, queue_size=10)
         self.tts_pub = rospy.Publisher('/talk_request', Voice, queue_size=10)
 
         print('Waiting for AR marker services...')
@@ -41,7 +43,7 @@ class Main():
         self.target_marker = look_at_marker
 
         print('Ready.')
-
+        
         rospy.spin()
 
     def enable_marker_recognition(self):
@@ -150,6 +152,9 @@ class Main():
                     pass
                 except:
                     self.say('Ok, that is as close as I can get to the marker.')
+                    msg = Bool()
+                    msg.data = True
+                    self.pub_aligned.publish(msg)
                     self.whole_body.move_to_joint_positions({'head_tilt_joint': 0.0})
                     break
             else:

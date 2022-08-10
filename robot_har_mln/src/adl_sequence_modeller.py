@@ -17,13 +17,14 @@ from graph_tool.all import *
 import networkx as nx
 import matplotlib.pyplot as plt
 import rospy
+import threading
 from regex import D
 
 from adl_hierarchy_helper import ADLHierarchyHelper
 from log import Log
 
 from std_msgs.msg import Bool
-from geometry_msgs.msg import Pose2D
+from geometry_msgs.msg import PoseStamped
 from ronsm_messages.msg import har_percepts, har_percept
 
 
@@ -62,7 +63,7 @@ class ChainState:
     time: Times
     percepts: Optional[List[Percept]]
     manual_alignment: Optional[bool]
-    robot_pose: Optional[Pose2D]
+    robot_pose: Optional[PoseStamped]
     help: Optional[HelpRequest]
     count: int
 
@@ -82,14 +83,12 @@ class ADLSequenceModeller():
         self.status_file = self.pickle_adl_path + 'status.pickle'
 
         # rospy.init_node('adl_sequence_modeller')
-        self.sub_pose = rospy.Subscriber(
-            '/robot_har_marker_utility/pose', Pose2D, callback=self.ros_callback_sub_pose)
-        self.current_pose = Pose2D()
-        self.sub_percept = rospy.Subscriber(
-            '/robot_har_percepts/percepts', har_percepts, callback=self.ros_callback_sub_percepts)
+        self.sub_pose = rospy.Subscriber('/global_pose', PoseStamped, callback=self.ros_callback_sub_pose)
+        self.current_pose = PoseStamped()
+        self.sub_percept = rospy.Subscriber('/robot_har_percepts/percepts', har_percepts, callback=self.ros_callback_sub_percepts)
         self.current_percepts = {}
-        self.sub_manual_alignment = rospy.Subscriber(
-            '/robot_har_marker_utility/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
+        self.sub_manual_alignment = rospy.Subscriber('/robot_har_marker_utility/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
+        self.aligned = False
 
         self.markov_chains = {}
         self.markov_chains_states = {}
@@ -119,7 +118,7 @@ class ADLSequenceModeller():
         self.update_markov_chains()
 
         self.logger.log_great('Ready.')
-
+        
     # File Creation
 
     def create_adl_files(self):
@@ -178,7 +177,7 @@ class ADLSequenceModeller():
         self.actions = ['START']
         time_object = Times(0.0, 0.0)
         entry = ChainState(None, 'START', 'START', copy.deepcopy(
-            self.actions), time_object, None, None, self.current_pose, None, 1)
+            self.actions), time_object, None, self.aligned, self.current_pose, None, 1)
         self.seq.append(entry)
 
     def train_action(self, agent, action):
@@ -189,9 +188,10 @@ class ADLSequenceModeller():
                 time), "{:.2f}".format(elapsed))
             self.actions.append(action)
             entry = ChainState(None, agent, action, copy.deepcopy(
-                self.actions), time_object, None, None, self.current_pose, None, 1)
+                self.actions), time_object, None, self.aligned, self.current_pose, None, 1)
             self.seq.append(entry)
             self.prev_time = time
+            self.aligned = False
 
     def train_help_request(self, help_type):
         if self.seq[-1].help == None:
@@ -206,7 +206,7 @@ class ADLSequenceModeller():
         time_object = Times("{:.2f}".format(time), "{:.2f}".format(elapsed))
         self.actions.append('END')
         entry = ChainState(None, 'END', 'END', self.actions,
-                           time_object, None, None, self.current_pose, None, 1)
+                           time_object, None, self.aligned, self.current_pose, None, 1)
         self.seq.append(entry)
 
     def train_label_sequence(self, adl):
@@ -386,7 +386,7 @@ class ADLSequenceModeller():
         plt.tight_layout()
         # plt.show(block=False)
 
-        png_file = 'MCs/' + adl + '.png'
+        png_file = self.rel_path + '/src/MCs/' + adl + '.png'
         plt.savefig(png_file)
         msg = 'Updated Markov Chain for "' + adl + \
             '". Saved Markov Chain at: ' + png_file
@@ -434,14 +434,12 @@ class ADLSequenceModeller():
             self.s2[-1].percepts = copy.deepcopy(percepts)
 
     def ros_callback_sub_manual_alignment(self, msg):
+        self.logger.log('Alignment message received.')
         if msg.data:
-            self.s1[-1].manual_alignment = True
-            if self.s2_active:
-                self.s2[-1].manual_alignment = True
+            self.aligned = True
 
 if __name__ == '__main__':
-    ase = ADLSequenceModeller(
-        '/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)
+    ase = ADLSequenceModeller('/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)
 
     # ase.start_sequence('train')
     # sleep(0.2)

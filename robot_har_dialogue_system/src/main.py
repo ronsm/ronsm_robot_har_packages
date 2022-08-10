@@ -82,6 +82,7 @@ class Main():
             label = self.dialogue_manager.story_query_all_labels_teaching()
             if label != '':
                 self.hi.label_teaching_adl(label)
+                rospy.sleep(1.0)
             self.hi.stop_teaching_adl() # happens here bc robot_har_mln expects start, label, stop ^\_(*.*)_/^
         elif intent == 'register_marker':
             self.hi.register_marker()

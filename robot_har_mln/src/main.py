@@ -26,7 +26,8 @@ from train_db_consistency_helper import TrainDBConsistencyHelper
 from log import Log
 
 from std_msgs import msg
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
+from geometry_msgs.msg import PoseStamped
 
 from ronsm_messages.msg import har_simple_evidence
 from ronsm_messages.msg import har_reset
@@ -54,7 +55,7 @@ class Main():
 
         if RESET:
             self.logger.log_warn('WARNNG: The global reset flag is set to true. This will reset the HAR system and clear the default evidence database.')
-            if input('Are you sure you wish to continue? (y/n)') != 'y':
+            if input('Are you sure you wish to continue? (y/n) ~> ') != 'y':
                 self.logger.log_warn('Exiting...')
                 exit()
 
@@ -143,6 +144,8 @@ class Main():
         self.sub_ros_add_rule_label = rospy.Subscriber('/robot_har_mln/mln/label', String, callback=self.ros_add_rule_label_callback)
         self.sub_ros_mln_train = rospy.Subscriber('/robot_har_mln/mln/train', String, callback=self.ros_mln_train_callback)
         self.sub_ros_arm_add_rule = rospy.Subscriber('/robot_har_mln/arm/add_rule', har_arm_basic, callback=self.arm.ros_add_rule_callback)
+
+        # self.sub_pose = rospy.Subscriber('/global_pose', PoseStamped, callback=self.asm.ros_callback_sub_pose)
 
         # ROS Publishers
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/db/evidence', har_evidence_list, queue_size=10)
