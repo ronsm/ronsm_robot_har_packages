@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from os.path import exists
 from time import perf_counter, sleep
 from turtle import pd
-from typing import Optional, List
+from typing import Dict, Optional, List
 import copy
 import numpy as np
 from graph_tool.all import *
@@ -49,6 +49,7 @@ class RobotPose:
     head_height: float
 
 
+@dataclass
 class Percept:
     name: str
     prob: float
@@ -67,6 +68,14 @@ class ChainState:
     help: Optional[HelpRequest]
     count: int
 
+@dataclass
+class CandidateState:
+    adl: str
+    state: ChainState
+    estimate: str
+    probs: Optional[dict]
+
+VERBOSE = True
 
 class ADLSequenceModeller():
     def __init__(self, rel_path, reset=False):
@@ -78,11 +87,11 @@ class ADLSequenceModeller():
 
         self.block_entries = False
 
+        # Pickles
         self.pickle_adl_path = self.rel_path + '/src/pickle/ADLs/'
-
         self.status_file = self.pickle_adl_path + 'status.pickle'
 
-        # rospy.init_node('adl_sequence_modeller')
+        # ROS Subscribers
         self.sub_pose = rospy.Subscriber('/global_pose', PoseStamped, callback=self.ros_callback_sub_pose)
         self.current_pose = PoseStamped()
         self.sub_percept = rospy.Subscriber('/robot_har_percepts/percepts', har_percepts, callback=self.ros_callback_sub_percepts)
@@ -90,9 +99,21 @@ class ADLSequenceModeller():
         self.sub_manual_alignment = rospy.Subscriber('/robot_har_marker_utility/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
         self.aligned = False
 
+        # Markov Chains
         self.markov_chains = {}
         self.markov_chains_states = {}
 
+        # State Estimation
+        self.state_current_s1 = None
+        self.state_current_s2 = None
+
+        self.state_previous_s1 = None
+        self.state_previous_s2 = None
+
+        self.state_estimate_success_s1 = False
+        self.state_estimate_success_s2 = False
+
+        # Segments (managed by main)
         self.s2_active = False
         self.s1 = []
         self.s2 = []
@@ -146,18 +167,21 @@ class ADLSequenceModeller():
         elif mode == 'predict':
             self.predict_start_sequence()
         else:
-            msg = 'Invalid mode passed to start_sequence.'
-            self.logger.log_warn(msg)
+            log = 'Invalid mode passed to start_sequence.'
+            self.logger.log_warn(log)
 
-    def action(self, mode, agent, action):
+    def action(self, mode, agent, action, prediction=None):
+        log = 'Action: (' + mode + ', ' + agent + ', ' + action + ', ' + str(prediction) + ')'
+        self.logger.log(log)
+
         self.current_percepts = {}
         if mode == 'train':
             self.train_action(agent, action)
         elif mode == 'predict':
-            self.predict_action(agent, action)
+            self.predict_action(agent, action, prediction)
         else:
-            msg = 'Invalid mode passed to action.'
-            self.logger.log_warn(msg)
+            log = 'Invalid mode passed to action.'
+            self.logger.log_warn(log)
 
     def stop_sequence(self, mode):
         self.train_stop_sequence()
@@ -235,7 +259,7 @@ class ADLSequenceModeller():
         self.s1.append(entry)
         self.s1_index = self.s1_index + 1
 
-    def predict_action(self, agent, action):
+    def predict_action(self, agent, action, prediction=None):
         time = perf_counter() - self.start_time
         elapsed = time - self.prev_time
         time_object = Times("{:.2f}".format(
@@ -259,9 +283,17 @@ class ADLSequenceModeller():
             self.prev_time = time
             self.s2_index = self.s2_index + 1
 
-        self.predict_step()
+        self.predict_step(prediction)
 
-    def predict_step(self):
+    def predict_step(self, prediction=None):
+        if prediction == None:
+            self.estimate_state_unbounded()
+        else:
+            self.estimate_state_bounded(prediction)
+        self.next_states()
+        self.execute_state()
+
+    def estimate_state_unbounded(self):
         # s1
         s1_candidates = []
         if len(self.s1) > 0:
@@ -270,13 +302,24 @@ class ADLSequenceModeller():
                     if collections.Counter(self.s1[-1].state) == collections.Counter(entry.state):
                         if self.s1[-1].state == entry.state:
                             s1_candidates.append(
-                                (adl, entry.uid, 'exact', entry.state))
+                                (CandidateState(adl, entry, 'exact', {})))
                         else:
                             s1_candidates.append(
-                                (adl, entry.uid, 'approx', entry.state))
+                                (CandidateState(adl, entry, 'approx', {})))
 
-        msg = 'S1 Candidates: ' + str(s1_candidates)
-        self.logger.log(msg)
+        if len(s1_candidates) > 0:
+            if VERBOSE:
+                self.logger.log_mini_header('Estimated State (S1) (Unbounded)')
+                log = str(s1_candidates)
+                self.logger.log(log)
+            self.state_estimate_success_s1 = True
+            self.select_state(s1_candidates, segment=1)
+        else:
+            if VERBOSE:
+                self.logger.log_mini_header('Estimated State (S1) (Unbounded)')
+                log = 'Unable to find any matching candidates.'
+                self.logger.log_warn(log)
+            self.state_estimate_success_s1 = False
 
         # s2
         if self.s2_active:
@@ -287,13 +330,165 @@ class ADLSequenceModeller():
                         if collections.Counter(self.s2[-1].state) == collections.Counter(entry.state):
                             if self.s2[-1].state == entry.state:
                                 s2_candidates.append(
-                                    (adl, entry.uid, 'exact', entry.state))
+                                    (CandidateState(adl, entry, 'exact', {})))
                             else:
                                 s2_candidates.append(
-                                    (adl, entry.uid, 'approx', entry.state))
+                                    (CandidateState(adl, entry, 'approx', {})))
 
-            msg = 'S2 Candidates: ' + str(s2_candidates)
-            self.logger.log(msg)
+            if len(s2_candidates) > 0:
+                if VERBOSE:
+                    self.logger.log_mini_header('Estimated State (S2) (Unbounded)')
+                    log = str(s2_candidates)
+                    self.logger.log(log)
+                self.state_estimate_success_s2 = True
+                self.select_state(s2_candidates, segment=2)
+            else:
+                if VERBOSE:
+                    self.logger.log_mini_header('Estimated State (S2) (Unbounded)')
+                    log = 'Unable to find any matching candidates.'
+                    self.logger.log_warn(log)
+                self.state_estimate_success_s2 = False
+
+    def estimate_state_bounded(self, prediction):
+        # s1
+        s1_candidates = []
+        if len(self.s1) > 0:
+            chain = self.markov_chains_states[prediction]
+            for entry in chain:
+                if collections.Counter(self.s1[-1].state) == collections.Counter(entry.state):
+                    if self.s1[-1].state == entry.state:
+                        s1_candidates.append(
+                            (CandidateState(prediction, entry, 'exact', {})))
+                    else:
+                        s1_candidates.append(
+                            (CandidateState(prediction, entry, 'approx', {})))
+
+        if len(s1_candidates) > 0:
+            if VERBOSE:
+                self.logger.log_mini_header('Estimated State (S1) (Bounded)')
+                log = str(s1_candidates)
+                self.logger.log(log)
+            self.select_state(s1_candidates, segment=1)
+            self.state_estimate_success_s1 = True
+        else:
+            if VERBOSE:
+                self.logger.log_mini_header('Estimated State (S1) (Bounded)')
+                log = 'Unable to find any matching candidates.'
+                self.logger.log_warn(log)
+            self.state_estimate_success_s1 = False
+
+        # s2
+        if self.s2_active:
+            s2_candidates = []
+            if len(self.s2) > 0:
+                chain = self.markov_chains_states[prediction]
+                for entry in chain:
+                    if collections.Counter(self.s2[-1].state) == collections.Counter(entry.state):
+                        if self.s2[-1].state == entry.state:
+                            s2_candidates.append(
+                                (CandidateState(prediction, entry, 'exact', {})))
+                        else:
+                            s2_candidates.append(
+                                (CandidateState(prediction, entry, 'approx', {})))
+
+            if len(s2_candidates) > 0:
+                if VERBOSE:
+                    self.logger.log_mini_header('Estimated State (S2) (Bounded)')
+                    log = str(s2_candidates)
+                    self.logger.log(log)
+                self.select_state(s2_candidates, segment=2)
+                self.state_estimate_success_s2 = True
+            else:
+                if VERBOSE:
+                    self.logger.log_mini_header('Estimated State (S2) (Bounded)')
+                    log = 'Unable to find any matching candidates.'
+                    self.logger.log_warn(log)
+                self.state_estimate_success_s2 = False
+
+    def select_state(self, candidates, segment):
+        if segment == 1:
+            self.state_previous_s1 = copy.deepcopy(self.state_current_s1)
+            exact = False
+            for candidate in candidates:
+                if candidate.estimate == 'exact':
+                    self.state_current_s1 = [candidate]
+                    exact = True
+            if not exact:
+                self.state_current_s1 = candidates
+        
+        if segment == 2:
+            self.state_previous_s2 = copy.deepcopy(self.state_current_s2)
+            exact = False
+            for candidate in candidates:
+                if candidate.estimate == 'exact':
+                    self.state_current_s2 = [candidate]
+                    exact = True
+            if not exact:
+                self.state_current_s2 = candidates
+
+        if VERBOSE:
+            self.logger.log_mini_header('Selected State (S1)')
+            log = str(self.state_current_s1)
+            self.logger.log(log)
+
+            self.logger.log_mini_header('Selected State (S2)')
+            log = str(self.state_current_s2)
+            self.logger.log(log)
+
+    def next_states(self):
+        # s1
+        if self.state_estimate_success_s1:
+            if self.state_current_s1[0].estimate == 'exact':
+                origin = self.state_current_s1[0].state.uid
+                adl = self.state_current_s1[0].adl
+                G = self.markov_chains[adl]
+                neighbors = G.neighbors(origin)
+                for neighbor in neighbors:
+                    weight = G.get_edge_data(origin, neighbor)
+                    self.state_current_s1[0].probs[neighbor] = weight
+            else:
+                for candidate in self.state_current_s1:
+                    origin = candidate.state.uid
+                    adl = candidate.adl
+                    G = self.markov_chains[adl]
+                    neighbors = G.neighbors(origin)
+                    for neighbor in neighbors:
+                        weight = G.get_edge_data(origin, neighbor)
+                        candidate.probs[neighbor] = weight
+
+            if VERBOSE:
+                self.logger.log_mini_header('Next States (S1)')
+                log = str(self.state_current_s1)
+                self.logger.log(log)
+
+        # s2
+        if self.s2_active:
+            if self.state_estimate_success_s2:
+                if self.state_current_s2[0].estimate == 'exact':
+                    origin = self.state_current_s2[0].state.uid
+                    adl = self.state_current_s2[0].adl
+                    G = self.markov_chains[adl]
+                    neighbors = G.neighbors(origin)
+                    for neighbor in neighbors:
+                        weight = G.get_edge_data(origin, neighbor)
+                        self.state_current_s2[0].probs[neighbor] = weight
+                else:
+                    for candidate in self.state_current_s2:
+                        origin = candidate.state.uid
+                        adl = candidate.adl
+                        G = self.markov_chains[adl]
+                        neighbors = G.neighbors(origin)
+                        for neighbor in neighbors:
+                            weight = G.get_edge_data(origin, neighbor)
+                            candidate.probs[neighbor] = weight
+
+                if VERBOSE:
+                    self.logger.log_mini_header('Next States (S2)')
+                    log = str(self.state_current_s2)
+                    self.logger.log(log)
+
+    def execute_state(self):
+        self.logger.log_mini_header('Execute State(s)')
 
     def swap_s2_to_s1(self):
         self.s1 = copy.deepcopy(self.s2)
@@ -323,12 +518,12 @@ class ADLSequenceModeller():
         # create the Markov Chain
         unique_chain_states = []
         if len(obj['sequences']) == 0:
-            msg = 'Cannot create Markov Chain for ' + adl + ', no sample sequences exist.'
-            self.logger.log(msg)
+            log = 'Cannot create Markov Chain for ' + adl + ', no sample sequences exist.'
+            self.logger.log(log)
             return
         else:
-            msg = 'Creating Markov Chain for ' + adl + '.'
-            self.logger.log(msg)
+            log = 'Creating Markov Chain for ' + adl + '.'
+            self.logger.log(log)
 
         for seq in obj['sequences']:
             for state in seq:
@@ -388,9 +583,9 @@ class ADLSequenceModeller():
 
         png_file = self.rel_path + '/src/MCs/' + adl + '.png'
         plt.savefig(png_file)
-        msg = 'Updated Markov Chain for "' + adl + \
+        log = 'Updated Markov Chain for "' + adl + \
             '". Saved Markov Chain at: ' + png_file
-        self.logger.log(msg)
+        self.logger.log(log)
 
         pprint.pprint(weights)
 
@@ -474,36 +669,83 @@ if __name__ == '__main__':
     # ase.stop_sequence('train')
     # ase.label_sequence('train', 'PreparingDrink')
 
-    ase.start_sequence('train')
-    ase.action('train', 'human', 'Bin')
-    ase.action('train', 'human', 'Tap')
-    ase.action('train', 'human', 'Kettle')
-    ase.action('train', 'human', 'DrinkwareCabinet')
-    ase.action('train', 'human', 'CutleryDrawer')
-    ase.stop_sequence('train')
-    ase.label_sequence('train', 'PreparingDrink')
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Bin')
+    # ase.action('train', 'human', 'Tap')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.action('train', 'human', 'CutleryDrawer')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'PreparingDrink')
+
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Bin')
+    # ase.action('train', 'human', 'Tap')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.action('train', 'human', 'CutleryDrawer')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'PreparingDrink')
+
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Tap')
+    # ase.action('train', 'human', 'Bin')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.action('train', 'human', 'CutleryDrawer')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'PreparingDrink')
+
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Bin')
+    # ase.action('train', 'human', 'Tap')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'CutleryDrawer')
+    # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'PreparingDrink')
 
     ase.start_sequence('train')
-    ase.action('train', 'human', 'Bin')
-    ase.action('train', 'human', 'Tap')
     ase.action('train', 'human', 'Kettle')
-    ase.action('train', 'human', 'DrinkwareCabinet')
-    ase.action('train', 'human', 'CutleryDrawer')
+    ase.action('train', 'human', 'FoodCabinet')
+    ase.action('train', 'human', 'MiscCabinet')
     ase.stop_sequence('train')
-    ase.label_sequence('train', 'PreparingDrink')
+    ase.label_sequence('train', 'Cooking')
 
     ase.start_sequence('train')
-    ase.action('train', 'human', 'Tap')
-    ase.action('train', 'human', 'Bin')
+    ase.action('train', 'human', 'FoodCabinet')
     ase.action('train', 'human', 'Kettle')
-    ase.action('train', 'human', 'DrinkwareCabinet')
-    ase.action('train', 'human', 'CutleryDrawer')
+    ase.action('train', 'human', 'Fridge')
     ase.stop_sequence('train')
-    ase.label_sequence('train', 'PreparingDrink')
+    ase.label_sequence('train', 'Cooking')
 
-    ase.start_sequence('predict', segment=1)
-    ase.action('predict', 'human', 'Bin', segment=1)
-    ase.action('predict', 'human', 'Tap', segment=1)
+    # ase.start_sequence('predict')
+    # ase.action('predict', 'human', 'Bin')
+    # ase.action('predict', 'human', 'Tap')
+    # ase.action('predict', 'human', 'CutleryDrawer')
+    
+    # ase.start_sequence('predict')
+    # ase.action('predict', 'human', 'Bin')
+    # ase.action('predict', 'human', 'Tap')
+    # ase.action('predict', 'human', 'CutleryDrawer')
+
+    # ase.start_sequence('predict')
+    # ase.action('predict', 'human', 'Bin', prediction='PreparingDrink')
+    # ase.action('predict', 'human', 'Tap', prediction='PreparingDrink')
+    # ase.action('predict', 'human', 'CutleryDrawer', prediction='PreparingDrink')
+
+    # ase.start_sequence('predict')
+    # ase.action('predict', 'human', 'Bin')
+    # ase.action('predict', 'human', 'Tap')
+    # ase.action('predict', 'human', 'Kettle', prediction='PreparingDrink')
+
+    ase.start_sequence('predict')
+    ase.action('predict', 'human', 'Kettle')
+    ase.action('predict', 'human', 'FoodCabinet')
+
+    ase.start_sequence('predict')
+    ase.action('predict', 'human', 'Kettle', prediction='Cooking')
+    ase.action('predict', 'human', 'FoodCabinet', prediction='Cooking')
 
     # ase.start_sequence('train')
     # ase.action('train', 'human', 'Tap')
