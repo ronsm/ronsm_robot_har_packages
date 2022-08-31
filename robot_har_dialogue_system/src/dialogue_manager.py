@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import aiml
+from har_interface import HARInterface
 from log import Log
 import responder
 import rospy
@@ -48,9 +49,9 @@ class DialogueManager(object):
         self.options = ['null', 'null']
 
         self.io = InputOutput(self.rel_path)
+        self.hi = HARInterface()
 
         self.pub_ros_arm_add_rule = rospy.Publisher('/robot_har_mln/arm/add_rule', har_arm_basic, queue_size=10)
-        self.pub_ros_har_label = rospy.Publisher('/robot_har_dialogue_system/label', String, queue_size=10)
 
         self.logger.log_great('Ready.')
     
@@ -81,9 +82,7 @@ class DialogueManager(object):
 
             log = 'Sending label to HAR system: ' + confirmation_label.model_label
             self.logger.log(log)
-            msg = String()
-            msg.data = confirmation_label.model_label
-            self.pub_ros_har_label.publish(msg)
+            self.hi.label_teaching_adl(confirmation_label.model_label)
 
             self.aiml.setPredicate('affirm_label', 'false')
         elif affirm_label == 'false':
@@ -125,9 +124,7 @@ class DialogueManager(object):
 
         log = 'Sending label to HAR system: ' + user_label
         self.logger.log(log)
-        msg = String()
-        msg.data = user_label
-        self.pub_ros_har_label.publish(msg)
+        self.hi.label_teaching_adl(user_label)
 
         self.follow_up = False
         self.aiml.setPredicate('user_label', '')
@@ -161,9 +158,7 @@ class DialogueManager(object):
 
         log = 'Sending label to HAR system: ' + user_label
         self.logger.log(log)
-        msg = String()
-        msg.data = user_label
-        self.pub_ros_har_label.publish(msg)
+        self.hi.label_teaching_adl(user_label)
 
         self.follow_up = False
         self.aiml.setPredicate('user_label', '')
@@ -197,9 +192,7 @@ class DialogueManager(object):
 
         log = 'Sending label to HAR system: ' + user_label
         self.logger.log(log)
-        msg = String()
-        msg.data = user_label
-        self.pub_ros_har_label.publish(msg)
+        self.hi.label_teaching_adl(user_label)
 
         self.follow_up = False
         self.aiml.setPredicate('user_label', '')
@@ -233,9 +226,7 @@ class DialogueManager(object):
 
         log = 'Sending label to HAR system: ' + user_label
         self.logger.log(log)
-        msg = String()
-        msg.data = user_label
-        self.pub_ros_har_label.publish(msg)
+        self.hi.label_teaching_adl(user_label)
 
         self.follow_up = False
         self.aiml.setPredicate('user_label', '')
@@ -331,8 +322,6 @@ class DialogueManager(object):
             self.logger.log_warn('No valid response.')
 
     def send_label_error(self, msg):
-        log = 'Sending label error message to HAR system.'
+        log = 'Labelling error. Sending label error message to HAR system.'
         self.logger.log(log)
-        msg = String()
-        msg.data = 'LABEL_ERROR'
-        self.pub_ros_har_label.publish(msg)
+        self.hi.label_teaching_adl('LABEL_ERROR')

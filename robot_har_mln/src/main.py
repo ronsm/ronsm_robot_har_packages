@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import os
+import queue
 import threading
 import copy
 from pracmln import MLN, Database, MLNQuery
@@ -109,6 +110,7 @@ class Main():
         self.s2_predictions_s = []
 
         # Segmentation
+        self.current_evidence = None # used by ASM
         self.room_e_history = []
         self.pred_e_history = []
         self.last_add = None
@@ -145,9 +147,8 @@ class Main():
         self.sub_ros_mln_train = rospy.Subscriber('/robot_har_mln/mln/train', String, callback=self.ros_mln_train_callback)
         self.sub_ros_arm_add_rule = rospy.Subscriber('/robot_har_mln/arm/add_rule', har_arm_basic, callback=self.arm.ros_add_rule_callback)
 
-        # self.sub_pose = rospy.Subscriber('/global_pose', PoseStamped, callback=self.asm.ros_callback_sub_pose)
-
         # ROS Publishers
+        self.pub_ros_prediction = rospy.Publisher('/robot_har_mln/db/prediction', String, queue_size=10)
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/db/evidence', har_evidence_list, queue_size=10)
         
         # ROS Action Servers
@@ -284,7 +285,7 @@ class Main():
     def loop(self):
         while(True):
             while not rospy.core.is_shutdown():
-                self.ros_publish()
+                self.ros_pub_evidence()
                 waiting_for_label = self.qs.is_waiting_for_label()
                 if waiting_for_label:
                     label = self.check_for_label()
@@ -298,6 +299,7 @@ class Main():
                         self.save_segment()
                 if self.predict_next_cycle:
                     self.decay_and_reason() # includes reasoning
+                    self.asm.action('predict', 'human', self.current_evidence, prediction=self.get_prevailing_prediction())
                     self.arm.evaluate_rules(self.s1_predictions_h, self.s1_predictions_s, self.room_e_history[-1])
                     self.predict_next_cycle = False
                 rospy.rostime.wallsleep(0.5)
@@ -338,6 +340,11 @@ class Main():
 
     def ros_add_rule_label_callback(self, msg):
         label = msg.data
+        if label == 'LABEL_ERROR':
+            log = 'Labelling error. Invalid label received from dialogue system. Query will be cancelled and segment lost.'
+            self.logger.log_warn(log)
+            self.qs.cancel_query()
+
         if self.mode == 'train':
             log = 'Labelling new rule as: ' + label
             self.logger.log(log)
@@ -369,7 +376,12 @@ class Main():
 
     # ROS Publishers
 
-    def ros_publish(self):
+    def ros_pub_prediction(self, prediction):
+        msg = String()
+        msg.data = prediction
+        self.ros_pub_prediction(msg)
+
+    def ros_pub_evidence(self):
         msg = har_evidence_list()
 
         e_preds, e_confs = self.evidence()
@@ -683,6 +695,19 @@ class Main():
 
         self.s2_predictions_s.append((children[winner], probs[winner], children, probs))
 
+    def get_prevailing_prediction(self):
+        s1_prediction = self.s1_predictions_s[-1]
+        s2_prediction = self.s2_predictions_s[-1]
+
+        prevailing_prediction = None
+        if (s2_prediction[1] > MIN_SEGMENT_CONF) and (s2_prediction[1] > MIN_SEGMENT_CONF):
+            if s2_prediction[1] > s1_prediction[1]:
+                prevailing_prediction = s2_prediction[0]
+            else:
+                prevailing_prediction = s1_prediction[0]
+
+        return prevailing_prediction
+
     def add(self, evidence, etype, room):
         resp = 'OK. Attempting to add: (' + etype + ',' + evidence + ')'
 
@@ -700,16 +725,15 @@ class Main():
 
     def add_pred(self, evidence, etype, room):
         pred = 'involves(S,' + evidence + ')'
+        self.current_evidence = evidence
 
         if self.mode == 'train':
-            self.asm.action('train', 'human', evidence)
+            self.asm.action('train', 'human', evidence, prediction=None)
             self.ps['events'].append(pred)
         elif self.mode == 'predict':
-            self.asm.action('predict', 'human', evidence)
             self.s1_db_h[pred] = 1.0
             self.s1_db_s[pred] = 1.0
             if self.s2_active:
-                self.asm.action('predict', 'human', evidence)
                 self.s2_db_h[pred] = 1.0
                 self.s2_db_s[pred] = 1.0
             self.room_e_history.append(room)
