@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 
 import os
-import queue
 import threading
 import copy
 from pracmln import MLN, Database, MLNQuery
@@ -12,8 +11,6 @@ from pracmln.mlnlearn import MLNLearn
 import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pickle
-import yaml
 
 import rospy
 import rospkg
@@ -27,14 +24,13 @@ from train_db_consistency_helper import TrainDBConsistencyHelper
 from log import Log
 
 from std_msgs import msg
-from std_msgs.msg import String, Bool
-from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import Strin
 
 from ronsm_messages.msg import har_simple_evidence
 from ronsm_messages.msg import har_reset
 from ronsm_messages.msg import har_evidence_list
-from ronsm_messages.msg import dm_system_request
 from ronsm_messages.msg import har_arm_basic
+from ronsm_messages.msg import har_predictions
 import ronsm_messages.msg
 
 etypes = ['event']
@@ -148,7 +144,7 @@ class Main():
         self.sub_ros_arm_add_rule = rospy.Subscriber('/robot_har_mln/arm/add_rule', har_arm_basic, callback=self.arm.ros_add_rule_callback)
 
         # ROS Publishers
-        self.pub_ros_prediction = rospy.Publisher('/robot_har_mln/db/prediction', String, queue_size=10)
+        self.ros_pub_predictions = rospy.Publisher('/robot_har_mln/db/predictions', String, queue_size=10)
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/db/evidence', har_evidence_list, queue_size=10)
         
         # ROS Action Servers
@@ -379,7 +375,7 @@ class Main():
     def ros_pub_prediction(self, prediction):
         msg = String()
         msg.data = prediction
-        self.ros_pub_prediction(msg)
+        self.ros_pub_predictions(msg)
 
     def ros_pub_evidence(self):
         msg = har_evidence_list()
@@ -493,6 +489,9 @@ class Main():
         self.load_global_train_dbs()
 
     def save_segment(self):
+        self.asm.stop_sequence('train')
+        self.asm.label_sequence('train', label_s)
+
         label = self.label_save
         segment_e = self.segment_save_e
 

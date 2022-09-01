@@ -8,7 +8,7 @@ import math
 from hsrb_interface import Robot
 
 from std_msgs.msg import String, Bool
-from geometry_msgs.msg import Pose2D
+from geometry_msgs.msg import Pose2D, PoseStamped
 from std_srvs.srv import Empty
 from tmc_msgs.msg import Voice
 
@@ -19,32 +19,39 @@ class Main():
     def __init__(self):
         rospy.init_node('robot_har_marker_utility')
 
+        # Transform Listeners
         self.tf1 = tf1.TransformListener()
-
         self.tfBuffer = tf2_ros.Buffer()
         self.tf = tf2_ros.TransformListener(self.tfBuffer)
 
-        self.sub_register_marker = rospy.Subscriber('/robot_har_marker_utility/register_marker', String, callback=self.register_marker_callback)
-        self.sub_look_at_marker = rospy.Subscriber('/robot_har_marker_utility/look_at_marker', String, callback=self.look_at_marker_callback)
+        # ROS Subscribers
+        self.sub_register_marker = rospy.Subscriber('/robot_har_marker_utility/register_marker', String, callback=self.ros_callback_register_marker_callback)
+        self.sub_look_at_marker = rospy.Subscriber('/robot_har_marker_utility/look_at_marker', String, callback=self.ros_callback_look_at_marker_callback)
 
+        # ROS Publishers
         self.pub_aligned = rospy.Publisher('/robot_har_marker_utility/aligned', Bool, queue_size=10)
-        self.tts_pub = rospy.Publisher('/talk_request', Voice, queue_size=10)
+        self.pub_tts = rospy.Publisher('/talk_request', Voice, queue_size=10)
 
+        # Marker Recognition Services
         print('Waiting for AR marker services...')
         rospy.wait_for_service('/marker/start_recognition')
         rospy.wait_for_service('/marker/stop_recognition')
         print('AR marker services online. Awaiting request...')
 
+        # HSR API
         self.robot = Robot()
         self.base = self.robot.try_get('omni_base')
         self.whole_body = self.robot.try_get('whole_body')
 
+        # Class Variables
         self.marker_recognition_enabled = False
         self.target_marker = look_at_marker
 
         print('Ready.')
         
         rospy.spin()
+
+    # Enable/Disable Marker Recognition
 
     def enable_marker_recognition(self):
         try:
@@ -64,7 +71,9 @@ class Main():
         except rospy.ServiceException as e:
                 print('Service call failed to /marker/stop_recognition')
 
-    def register_marker_callback(self, msg):
+    # ROS Callbacks
+
+    def ros_callback_register_marker_callback(self, msg):
         if not self.marker_recognition_enabled:
             self.enable_marker_recognition()
 
@@ -94,7 +103,7 @@ class Main():
             print('Unable to detect marker.')
             self.say('Sorry, I was unable to detect a marker. If you like to try again, repeat the command.')        
 
-    def look_at_marker_callback(self, msg):
+    def ros_callback_look_at_marker_callback(self, msg):
         # enable marker recognition
         if not self.marker_recognition_enabled:
             self.enable_marker_recognition()
@@ -172,13 +181,17 @@ class Main():
         if self.marker_recognition_enabled:
             self.disable_marker_recognition()
 
+    # HSR TTS
+
     def say(self, say):
         msg = Voice()
         msg.language = 1
         msg.interrupting = True
         msg.queueing = True
         msg.sentence = say
-        self.tts_pub.publish(msg)
+        self.pub_tts.publish(msg)
+
+    # Math Helper Functions
 
     def euler_from_quaternion(self, x, y, z, w):
         """

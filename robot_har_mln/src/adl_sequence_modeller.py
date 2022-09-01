@@ -1,16 +1,13 @@
 #! /usr/bin/env python3
 
-from enum import unique
 import pickle
 import collections
 import pprint
 import os
-import math
 from dataclasses import dataclass
 from os.path import exists
-from time import perf_counter, sleep
-from turtle import pd
-from typing import Dict, Optional, List
+from time import perf_counter
+from typing import Optional, List
 import copy
 import numpy as np
 from graph_tool.all import *
@@ -87,6 +84,9 @@ class ADLSequenceModeller():
 
         self.block_entries = False
 
+        # Mode
+        self.mode = 'predict'
+
         # Pickles
         self.pickle_adl_path = self.rel_path + '/src/pickle/ADLs/'
         self.status_file = self.pickle_adl_path + 'status.pickle'
@@ -98,6 +98,9 @@ class ADLSequenceModeller():
         self.current_percepts = {}
         self.sub_manual_alignment = rospy.Subscriber('/robot_har_marker_utility/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
         self.aligned = False
+
+        # ROS Publishers
+        self.pub_pose = rospy.Publisher('/goal', PoseStamped, queue_size=10)
 
         # Markov Chains
         self.markov_chains = {}
@@ -195,6 +198,7 @@ class ADLSequenceModeller():
     # Sequence Modeller (Training)
 
     def train_start_sequence(self):
+        self.mode = 'train'
         self.seq = []
         self.start_time = perf_counter()
         self.prev_time = 0.0
@@ -224,6 +228,8 @@ class ADLSequenceModeller():
             self.seq[-1].help.help_types.append(help_type)
 
     def train_stop_sequence(self):
+        if self.mode == 'predict':
+            self.seq = copy.deepcopy(self.s1)
         self.block_entries = True
         time = perf_counter() - self.start_time
         elapsed = time - self.prev_time
@@ -232,6 +238,8 @@ class ADLSequenceModeller():
         entry = ChainState(None, 'END', 'END', self.actions,
                            time_object, None, self.aligned, self.current_pose, None, 1)
         self.seq.append(entry)
+        self.mode = 'predict'
+        self.update_markov_chains()
 
     def train_label_sequence(self, adl):
         path = self.pickle_adl_path + adl + '.pickle'
@@ -489,6 +497,48 @@ class ADLSequenceModeller():
 
     def execute_state(self):
         self.logger.log_mini_header('Execute State(s)')
+        
+        # what percepts are we expecting?
+        expected_percepts = []
+        for state in self.state_current_s1:
+            if state.state.percepts != None:
+                expected_percepts = expected_percepts + state.state.percepts
+
+        if self.s2_active:
+            for state in self.state_current_s2:
+                if state.state.percepts != None:
+                    expected_percepts = expected_percepts + state.state.percepts
+        
+        log = 'Expected percepts: ' + str(expected_percepts)
+        self.logger.log(log)
+
+        # what help can we offer?
+        potential_help = []
+        for state in self.state_current_s1:
+            if state.state.help != None:
+                potential_help = potential_help + state.state.help.help_types
+
+        if self.s2_active:
+            for state in self.state_current_s2:
+                if state.state.help != None:
+                    potential_help = potential_help + state.state.help.help_types
+
+        log = 'Potential help: ' + str(potential_help)
+        self.logger.log(log)
+
+        # does the robot need to move?
+        if self.state_current_s1[0].estimate == 'exact':
+            if self.state_current_s1[0].state.manual_alignment:
+                self.pub_pose.publish(self.state_current_s1[0].state.robot_pose)
+                log = 'Robot pose is being adjusted.'
+                self.logger.log(log)
+            else:
+                log = 'Robot pose is NOT being adjusted.'
+                self.logger.log(log)
+
+        # has too much time passed?
+        # start a thread that monitors time elapsed and does something
+        # when too much time has passed, e.g. +20%
 
     def swap_s2_to_s1(self):
         self.s1 = copy.deepcopy(self.s2)
@@ -705,19 +755,26 @@ if __name__ == '__main__':
     # ase.stop_sequence('train')
     # ase.label_sequence('train', 'PreparingDrink')
 
-    ase.start_sequence('train')
-    ase.action('train', 'human', 'Kettle')
-    ase.action('train', 'human', 'FoodCabinet')
-    ase.action('train', 'human', 'MiscCabinet')
-    ase.stop_sequence('train')
-    ase.label_sequence('train', 'Cooking')
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'FoodCabinet')
+    # ase.action('train', 'human', 'MiscCabinet')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'Cooking')
 
-    ase.start_sequence('train')
-    ase.action('train', 'human', 'FoodCabinet')
-    ase.action('train', 'human', 'Kettle')
-    ase.action('train', 'human', 'Fridge')
-    ase.stop_sequence('train')
-    ase.label_sequence('train', 'Cooking')
+    # ase.start_sequence('train')
+    # ase.action('train', 'human', 'FoodCabinet')
+    # ase.action('train', 'human', 'Kettle')
+    # ase.action('train', 'human', 'Fridge')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'Cooking')
+
+    # ase.start_sequence('predict')
+    # ase.action('predict', 'human', 'FoodCabinet')
+    # ase.action('predict', 'human', 'Fridge')
+    # ase.action('predict', 'human', 'Bin')
+    # ase.stop_sequence('train')
+    # ase.label_sequence('train', 'Cooking')
 
     # ase.start_sequence('predict')
     # ase.action('predict', 'human', 'Bin')
@@ -739,13 +796,13 @@ if __name__ == '__main__':
     # ase.action('predict', 'human', 'Tap')
     # ase.action('predict', 'human', 'Kettle', prediction='PreparingDrink')
 
-    ase.start_sequence('predict')
-    ase.action('predict', 'human', 'Kettle')
-    ase.action('predict', 'human', 'FoodCabinet')
+    # ase.start_sequence('predict')
+    # ase.action('predict', 'human', 'Kettle')
+    # ase.action('predict', 'human', 'FoodCabinet')
 
     ase.start_sequence('predict')
-    ase.action('predict', 'human', 'Kettle', prediction='Cooking')
     ase.action('predict', 'human', 'FoodCabinet', prediction='Cooking')
+    ase.action('predict', 'human', 'Fridge', prediction='Cooking')
 
     # ase.start_sequence('train')
     # ase.action('train', 'human', 'Tap')
