@@ -24,7 +24,7 @@ from train_db_consistency_helper import TrainDBConsistencyHelper
 from log import Log
 
 from std_msgs import msg
-from std_msgs.msg import Strin
+from std_msgs.msg import String
 
 from ronsm_messages.msg import har_simple_evidence
 from ronsm_messages.msg import har_reset
@@ -144,7 +144,7 @@ class Main():
         self.sub_ros_arm_add_rule = rospy.Subscriber('/robot_har_mln/arm/add_rule', har_arm_basic, callback=self.arm.ros_add_rule_callback)
 
         # ROS Publishers
-        self.ros_pub_predictions = rospy.Publisher('/robot_har_mln/db/predictions', String, queue_size=10)
+        self.pub_ros_predictions = rospy.Publisher('/robot_har_mln/db/predictions', har_predictions, queue_size=10)
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/db/evidence', har_evidence_list, queue_size=10)
         
         # ROS Action Servers
@@ -295,7 +295,9 @@ class Main():
                         self.save_segment()
                 if self.predict_next_cycle:
                     self.decay_and_reason() # includes reasoning
-                    self.asm.action('predict', 'human', self.current_evidence, prediction=self.get_prevailing_prediction())
+                    prediction_h, prediction_s = self.get_prevailing_predictions()
+                    self.asm.action('predict', 'human', self.current_evidence, prediction=prediction_s)
+                    self.ros_pub_predictions(prediction_h, prediction_s)
                     self.arm.evaluate_rules(self.s1_predictions_h, self.s1_predictions_s, self.room_e_history[-1])
                     self.predict_next_cycle = False
                 rospy.rostime.wallsleep(0.5)
@@ -372,10 +374,11 @@ class Main():
 
     # ROS Publishers
 
-    def ros_pub_prediction(self, prediction):
-        msg = String()
-        msg.data = prediction
-        self.ros_pub_predictions(msg)
+    def ros_pub_predictions(self, prediction_h, prediction_s):
+        msg = har_predictions()
+        msg.h = prediction_h
+        msg.s = prediction_s
+        self.pub_ros_predictions(msg)
 
     def ros_pub_evidence(self):
         msg = har_evidence_list()
@@ -694,18 +697,30 @@ class Main():
 
         self.s2_predictions_s.append((children[winner], probs[winner], children, probs))
 
-    def get_prevailing_prediction(self):
+    def get_prevailing_predictions(self):
+        # H
+        s1_prediction = self.s1_predictions_h[-1]
+        s2_prediction = self.s2_predictions_h[-1]
+
+        prevailing_prediction_h = None
+        if (s1_prediction[1] > MIN_SEGMENT_CONF) and (s2_prediction[1] > MIN_SEGMENT_CONF):
+            if s2_prediction[1] > s1_prediction[1]:
+                prevailing_prediction_h = s2_prediction[0]
+            else:
+                prevailing_prediction_h = s1_prediction[0]
+
+        # S
         s1_prediction = self.s1_predictions_s[-1]
         s2_prediction = self.s2_predictions_s[-1]
 
-        prevailing_prediction = None
-        if (s2_prediction[1] > MIN_SEGMENT_CONF) and (s2_prediction[1] > MIN_SEGMENT_CONF):
+        prevailing_prediction_s = None
+        if (s1_prediction[1] > MIN_SEGMENT_CONF) and (s2_prediction[1] > MIN_SEGMENT_CONF):
             if s2_prediction[1] > s1_prediction[1]:
-                prevailing_prediction = s2_prediction[0]
+                prevailing_prediction_s = s2_prediction[0]
             else:
-                prevailing_prediction = s1_prediction[0]
+                prevailing_prediction_s = s1_prediction[0]
 
-        return prevailing_prediction
+        return prevailing_prediction_h, prevailing_prediction_s
 
     def add(self, evidence, etype, room):
         resp = 'OK. Attempting to add: (' + etype + ',' + evidence + ')'
