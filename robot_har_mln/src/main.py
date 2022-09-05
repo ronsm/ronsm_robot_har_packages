@@ -106,6 +106,7 @@ class Main():
         self.s2_predictions_s = []
 
         # Segmentation
+        self.current_room = None
         self.current_evidence = None # used by ASM
         self.room_e_history = []
         self.pred_e_history = []
@@ -146,6 +147,7 @@ class Main():
         # ROS Publishers
         self.pub_ros_predictions = rospy.Publisher('/robot_har_mln/db/predictions', har_predictions, queue_size=10)
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/db/evidence', har_evidence_list, queue_size=10)
+        self.pub_ros_move_to_room = rospy.Publisher('/robot_har_robot_mover/move_to_room', String, queue_size=10)
         
         # ROS Action Servers
         self.action_name = 'robot_har_mln/har_reason'
@@ -372,13 +374,22 @@ class Main():
         self.logger.log('Received request to train MLNs.')
         self.train_mlns()
 
+    def ros_move_to_room(self, room):
+        if (room != self.current_room) or (self.current_room == None):
+            log = 'Sending robot to room: ' + room
+            self.logger.log(log)
+            msg = String()
+            msg.data = room
+            self.pub_ros_move_to_room.publish(msg)
+            self.current_room = room
+
     # ROS Publishers
 
     def ros_pub_predictions(self, prediction_h, prediction_s):
         msg = har_predictions()
         msg.h = prediction_h
         msg.s = prediction_s
-        self.pub_ros_predictions(msg)
+        self.pub_ros_predictions.publish(msg)
 
     def ros_pub_evidence(self):
         msg = har_evidence_list()
@@ -699,26 +710,30 @@ class Main():
 
     def get_prevailing_predictions(self):
         # H
-        s1_prediction = self.s1_predictions_h[-1]
-        s2_prediction = self.s2_predictions_h[-1]
+        if self.s2_active:
+            s1_prediction = self.s1_predictions_h[-1]
+            s2_prediction = self.s2_predictions_h[-1]
 
-        prevailing_prediction_h = None
-        if (s1_prediction[1] > MIN_SEGMENT_CONF) and (s2_prediction[1] > MIN_SEGMENT_CONF):
-            if s2_prediction[1] > s1_prediction[1]:
-                prevailing_prediction_h = s2_prediction[0]
-            else:
-                prevailing_prediction_h = s1_prediction[0]
+            prevailing_prediction_h = None
+            if (s1_prediction[1] > MIN_SEGMENT_CONF) and (s2_prediction[1] > MIN_SEGMENT_CONF):
+                if s2_prediction[1] > s1_prediction[1]:
+                    prevailing_prediction_h = s2_prediction[0]
+                else:
+                    prevailing_prediction_h = s1_prediction[0]
 
-        # S
-        s1_prediction = self.s1_predictions_s[-1]
-        s2_prediction = self.s2_predictions_s[-1]
+            # S
+            s1_prediction = self.s1_predictions_s[-1]
+            s2_prediction = self.s2_predictions_s[-1]
 
-        prevailing_prediction_s = None
-        if (s1_prediction[1] > MIN_SEGMENT_CONF) and (s2_prediction[1] > MIN_SEGMENT_CONF):
-            if s2_prediction[1] > s1_prediction[1]:
-                prevailing_prediction_s = s2_prediction[0]
-            else:
-                prevailing_prediction_s = s1_prediction[0]
+            prevailing_prediction_s = None
+            if (s1_prediction[1] > MIN_SEGMENT_CONF) and (s2_prediction[1] > MIN_SEGMENT_CONF):
+                if s2_prediction[1] > s1_prediction[1]:
+                    prevailing_prediction_s = s2_prediction[0]
+                else:
+                    prevailing_prediction_s = s1_prediction[0]
+        else:
+            prevailing_prediction_h = self.s1_predictions_h[-1][0]
+            prevailing_prediction_s = self.s1_predictions_s[-1][0]
 
         return prevailing_prediction_h, prevailing_prediction_s
 
@@ -731,6 +746,8 @@ class Main():
                 self.predict_next_cycle = True
             resp = 'OK. Added: (' + etype + ',' + evidence + ')'
             self.last_add = etype
+
+            self.ros_move_to_room(room)
         else:
             resp = 'Invalid evidence type or invalid predicate. Valid types are: event.'
 

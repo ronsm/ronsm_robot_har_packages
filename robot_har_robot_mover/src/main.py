@@ -2,7 +2,6 @@
 
 import rospy
 import tf
-import hsrb_interface
 from hsrb_interface import Robot
 
 from log import Log
@@ -33,3 +32,29 @@ class Main():
         self.base = self.robot.try_get('omni_base')
         self.body = self.robot.try_get('whole_body')
         # self.geometry = self.robot.try_get('geometry')latest
+
+        self.logger.log('Ready.')
+
+        rospy.spin()
+
+    def ros_move_to_room_callback(self, msg):
+        position = ralt_map[msg.data]
+        log = 'Moving to position: ' + str(position)
+        self.logger.log(log)
+
+        # input goal pose
+        goal_x = position[0]
+        goal_y = position[1]
+        goal_yaw = position[2]
+
+        # fill ROS message
+        goal = PoseStamped()
+        goal.header.stamp = rospy.Time.now()
+        goal.header.frame_id = "map"
+        goal.pose.position = Point(goal_x, goal_y, 0)
+        quat = tf.transformations.quaternion_from_euler(0, 0, goal_yaw)
+        goal.pose.orientation = Quaternion(*quat)
+
+        self.pub_pose.publish(goal)
+
+m = Main()
