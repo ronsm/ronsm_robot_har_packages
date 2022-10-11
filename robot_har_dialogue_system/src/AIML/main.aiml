@@ -433,6 +433,13 @@
     </category>
 
     <category>
+        <pattern>YES I AM *</pattern>
+        <template>
+            <srai>SAVE USER LABEL <star index="1"/></srai>
+        </template>
+    </category>
+
+    <category>
         <pattern>YEAH I AM STILL *</pattern>
         <template>
             <srai>SAVE USER LABEL <star index="1"/></srai>

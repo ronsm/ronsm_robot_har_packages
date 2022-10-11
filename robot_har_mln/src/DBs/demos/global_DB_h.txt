@@ -1,5 +1,7 @@
 involves(S,Oven)
+after(Oven,DinnerwareCabinet)
 involves(S,DinnerwareCabinet)
+after(DinnerwareCabinet,CutleryDrawer)
 involves(S,CutleryDrawer)
 involves(S,FoodCabinet)
 involves(S,Fridge)
@@ -13,7 +15,7 @@ class(S,FoodDrink)
 ---
 involves(S,TVOn)
 involves(S,SofaSit)
-involves(S,Relaxing)
+class(S,Relaxing)
 ---
 involves(S,BedGetIn)
 class(S,Bed)

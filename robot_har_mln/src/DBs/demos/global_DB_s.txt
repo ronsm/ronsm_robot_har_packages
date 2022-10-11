@@ -13,7 +13,7 @@ class(S,PreparingDrink)
 ---
 involves(S,TVOn)
 involves(S,SofaSit)
-involves(S,WatchingTV)
+class(S,WatchingTV)
 ---
 involves(S,BedGetIn)
 class(S,Sleeping)

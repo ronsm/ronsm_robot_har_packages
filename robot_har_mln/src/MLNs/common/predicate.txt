@@ -1,2 +1,4 @@
 class(a, activity?)
 involves(a, event)
+after(event, event)
+occurs(a, time)

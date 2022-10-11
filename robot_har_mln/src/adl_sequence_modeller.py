@@ -498,13 +498,16 @@ class ADLSequenceModeller():
     def execute_state(self):
         self.logger.log_mini_header('Execute State(s)')
         
+        if not self.state_estimate_success_s1:
+            return
+
         # what percepts are we expecting?
         expected_percepts = []
         for state in self.state_current_s1:
             if state.state.percepts != None:
                 expected_percepts = expected_percepts + state.state.percepts
 
-        if self.s2_active:
+        if self.s2_active and self.state_estimate_success_s2:
             for state in self.state_current_s2:
                 if state.state.percepts != None:
                     expected_percepts = expected_percepts + state.state.percepts
@@ -518,7 +521,7 @@ class ADLSequenceModeller():
             if state.state.help != None:
                 potential_help = potential_help + state.state.help.help_types
 
-        if self.s2_active:
+        if self.s2_active and self.state_estimate_success_s2:
             for state in self.state_current_s2:
                 if state.state.help != None:
                     potential_help = potential_help + state.state.help.help_types

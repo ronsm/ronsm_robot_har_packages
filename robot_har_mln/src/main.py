@@ -21,6 +21,7 @@ from adl_sequence_modeller import ADLSequenceModeller
 from adl_rule_modeller import ADLRuleModeller
 from query_selection import QuerySelection
 from train_db_consistency_helper import TrainDBConsistencyHelper
+from known_domains_helper import KnownDomainsHelper
 from log import Log
 
 from std_msgs import msg
@@ -72,6 +73,7 @@ class Main():
         self.qs = QuerySelection()
         self.ahh = ADLHierarchyHelper(self.rel_path)
         self.tdch = TrainDBConsistencyHelper(self.rel_path)
+        self.kdh = KnownDomainsHelper(self.rel_path)
         if RESET:
             self.asm = ADLSequenceModeller(self.rel_path, reset=True)
             self.arm = ADLRuleModeller(self.rel_path, reset=True)
@@ -123,6 +125,7 @@ class Main():
         self.s2_consistent_agreement = []
 
         # Loads
+        self.known_events, self.known_times, self.known_adls = self.kdh.count()
         self.create_pred_store()
         self.load_knowledge_bases()
         self.create_default_mlns()
@@ -159,8 +162,8 @@ class Main():
     # Init. Methods
 
     def create_default_mlns(self):
-        self.mln_h = MLN(grammar='StandardGrammar', logic='FirstOrderLogic')
-        self.mln_s = MLN(grammar='StandardGrammar', logic='FirstOrderLogic')
+        self.mln_h = MLN(grammar='PRACGrammar', logic='FirstOrderLogic')
+        self.mln_s = MLN(grammar='PRACGrammar', logic='FirstOrderLogic')
 
         self.init_mlns(default_rules=True)
 
@@ -179,16 +182,19 @@ class Main():
         base_path = self.rel_path + '/src/MLNs/common/'
 
         event_path = base_path + 'event.txt'
+        time_path = base_path + 'time.txt'
         predicate_path = base_path + 'predicate.txt'
         rules_h_path = base_path + 'rules_h.txt'
         rules_s_path = base_path + 'rules_s.txt'
 
         event_file = open(event_path, 'r')
+        time_file = open(time_path, 'r')
         predicate_file = open(predicate_path, 'r')
         rules_h_file = open(rules_h_path, 'r')
         rules_s_file = open(rules_s_path, 'r')
 
         self.events = []
+        self.times = []
         self.events_persist = []
         self.predicates = []
         self.rules_h = []
@@ -205,6 +211,9 @@ class Main():
                 pred_cancel = 'involves(S,' + self.events[i+1] + ')'
                 self.events_persist.append((pred_persist, pred_cancel))
 
+        for line in time_file:
+            self.times.append(line.rstrip('\n'))
+
         for line in predicate_file:
             self.predicates.append(line.rstrip('\n'))
 
@@ -215,26 +224,34 @@ class Main():
             self.rules_s.append(line.rstrip('\n'))
 
     def init_mlns(self, default_rules=False):
-        # H
-        activity_str = 'activity = {'
-        for activity in self.ahh.get_parents():
-            activity_str = activity_str + activity + ','
-        activity_str = activity_str.rstrip(',') + '}'
-        self.mln_h << activity_str
+        # # H Only
+        # activity_str = 'activity = {'
+        # for activity in self.ahh.get_parents():
+        #     activity_str = activity_str + activity + ','
+        # activity_str = activity_str.rstrip(',') + '}'
+        # self.mln_h << activity_str
         
-        # S
-        activity_str = 'activity = {'
-        for activity in self.ahh.get_children():
-            activity_str = activity_str + activity + ','
-        activity_str = activity_str.rstrip(',') + '}'
-        self.mln_s << activity_str
+        # # S Only
+        # activity_str = 'activity = {'
+        # for activity in self.ahh.get_children():
+        #     activity_str = activity_str + activity + ','
+        # activity_str = activity_str.rstrip(',') + '}'
+        # self.mln_s << activity_str
 
-        events_str = 'events = {'
-        for event in self.events:
-            events_str = events_str + event + ','
-        events_str = events_str.rstrip(',') + '}'
-        self.mln_h << events_str
-        self.mln_s << events_str
+        # Both
+        # event_str = 'event = {'
+        # for event in self.events:
+        #     event_str = event_str + event + ','
+        # event_str = event_str.rstrip(',') + '}'
+        # self.mln_h << event_str
+        # self.mln_s << event_str
+
+        # time_str = 'time = {'
+        # for time in self.times:
+        #     time_str = time_str + time + ','
+        # time_str = time_str.rstrip(',') + '}'
+        # self.mln_h << time_str
+        # self.mln_s << time_str
 
         is_fuzzy = False
         for predicate in self.predicates:
@@ -263,7 +280,7 @@ class Main():
         self.s2_db_h = Database(self.mln_h)
         self.s2_db_s = Database(self.mln_s)
 
-        for event in self.events:
+        for event in self.known_events:
             predicate = 'involves(S,' + event + ')'
             self.s1_db_h << predicate
             self.s1_db_h[predicate] = 0.0
@@ -273,6 +290,29 @@ class Main():
             self.s2_db_h[predicate] = 0.0
             self.s2_db_s << predicate
             self.s2_db_s[predicate] = 0.0
+
+        for time in self.known_times:
+            predicate = 'occurs(S, ' + time + ')'
+            self.s1_db_h << predicate
+            self.s1_db_h[predicate] = 0.0
+            self.s1_db_s << predicate
+            self.s1_db_s[predicate] = 0.0
+            self.s2_db_h << predicate
+            self.s2_db_h[predicate] = 0.0
+            self.s2_db_s << predicate
+            self.s2_db_s[predicate] = 0.0
+
+        for event_o in self.known_events:
+            for event_i in self.known_events:
+                predicate = 'after(' + event_o + ',' + event_i + ')'
+                self.s1_db_h << predicate
+                self.s1_db_h[predicate] = 0.0
+                self.s1_db_s << predicate
+                self.s1_db_s[predicate] = 0.0
+                self.s2_db_h << predicate
+                self.s2_db_h[predicate] = 0.0
+                self.s2_db_s << predicate
+                self.s2_db_s[predicate] = 0.0
 
     def create_pred_store(self):
         self.ps = {}
@@ -618,7 +658,10 @@ class Main():
 
         probs = []
         for q in queries:
-            prob = result.results[q]
+            try:
+                prob = result.results[q]
+            except:
+                prob = 0.0
             probs.append(prob)
         
         winner = np.argmax(probs)
@@ -643,7 +686,10 @@ class Main():
 
         probs = []
         for q in queries:
-            prob = result.results[q]
+            try:
+                prob = result.results[q]
+            except:
+                prob = 0.0
             probs.append(prob)
         
         winner = np.argmax(probs)
@@ -668,7 +714,10 @@ class Main():
 
         probs = []
         for q in queries:
-            prob = result.results[q]
+            try:
+                prob = result.results[q]
+            except:
+                prob = 0.0
             probs.append(prob)
         
         winner = np.argmax(probs)
@@ -693,7 +742,10 @@ class Main():
 
         probs = []
         for q in queries:
-            prob = result.results[q]
+            try:
+                prob = result.results[q]
+            except:
+                prob = 0.0
             probs.append(prob)
         
         winner = np.argmax(probs)
@@ -775,10 +827,24 @@ class Main():
                 self.s1_db_s[persistent] = 0.0
                 self.s2_db_h[persistent] = 0.0
                 self.s2_db_s[persistent] = 0.0
-    
+
+        if self.mode == 'predict':
+            if len(self.pred_e_history) > 1:
+                previous = self.pred_e_history[-2]
+                previous = previous.split(',')
+                previous = previous[1]
+                previous = previous.rstrip(')')
+                pred = 'after(' + previous+ ',' + evidence + ')'
+                print(pred)
+                self.s1_db_h[pred] = 1.0
+                self.s1_db_s[pred] = 1.0
+                if self.s2_active:
+                    self.s2_db_h[pred] = 1.0
+                    self.s2_db_s[pred] = 1.0
+
     def valid_pred(self, evidence, etype):
         if etype in etypes:
-            if evidence in self.events:
+            if evidence in self.known_events:
                 return True
             else:
                 return False
@@ -816,21 +882,20 @@ class Main():
         config['ignore_zero_weight_formulas'] = 0
         config['ignore_unknown_preds'] = False
         config['incremental'] = 1
-        config['grammar'] = 'StandardGrammar'
+        config['grammar'] = 'PRACGrammar'
         config['logic'] = 'FirstOrderLogic'
-        # config['method'] = 'pseudo-log-likelihood'
-        config['method'] = 'DPLL'
-        config['epreds'] = 'involves'
+        config['method'] = 'DBPLL_CG'
+        config['epreds'] = ['involves', 'occurs', 'after']
         config['qpreds'] = 'class'
         config['optimizer'] = 'bfgs'
         config['multicore'] = False
         config['profile'] = 0
         config['shuffle'] = 0
-        config['prior_mean'] = 0
-        config['prior_stddev'] = 5
+        config['prior_mean'] = 0.5
+        config['prior_stddev'] = 1
         config['save'] = True
         config['use_initial_weights'] = 0
-        config['use_prior'] = 1
+        config['use_prior'] = 0
 
         config['infoInterval'] = 500
         config['resultsInterval'] = 1000
@@ -854,21 +919,20 @@ class Main():
         config['ignore_zero_weight_formulas'] = 0
         config['ignore_unknown_preds'] = False
         config['incremental'] = 1
-        config['grammar'] = 'StandardGrammar'
+        config['grammar'] = 'PRACGrammar'
         config['logic'] = 'FirstOrderLogic'
-        # config['method'] = 'pseudo-log-likelihood'
-        config['method'] = 'DPLL'
-        config['epreds'] = 'involves'
+        config['method'] = 'DBPLL_CG'
+        config['epreds'] = ['involves', 'occurs', 'after']
         config['qpreds'] = 'class'
         config['optimizer'] = 'bfgs'
         config['multicore'] = False
         config['profile'] = 0
         config['shuffle'] = 0
-        config['prior_mean'] = 0
-        config['prior_stddev'] = 5
+        config['prior_mean'] = 0.5
+        config['prior_stddev'] = 1
         config['save'] = True
         config['use_initial_weights'] = 0
-        config['use_prior'] = 1
+        config['use_prior'] = 0
 
         config['infoInterval'] = 500
         config['resultsInterval'] = 1000
