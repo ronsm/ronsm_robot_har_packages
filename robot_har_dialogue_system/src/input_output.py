@@ -8,18 +8,18 @@ from tmc_msgs.msg import Voice
 
 from log import Log
 
-OUTPUT = 'ROBOT'
-
 class InputOutput(object):
-    def __init__(self, rel_path):
+    def __init__(self, rel_path, ouput):
         self.id = 'input_outpt'
         self.logger = Log(self.id)
 
         self.rel_path = rel_path
 
-        if OUTPUT == 'ROBOT':
+        self.output = output
+
+        if self.output == 'ROBOT':
             self.tts_pub = rospy.Publisher('/talk_request', Voice, queue_size=10)
-        elif OUTPUT == 'LOCAL':
+        elif self.output == 'LOCAL':
             self.tts_engine = pyttsx3.init()
             self.tts_engine.setProperty("rate", 110)
         else:
@@ -32,7 +32,7 @@ class InputOutput(object):
         self.logger.log_great('Ready.')
 
     def say(self, text):
-        if OUTPUT == 'ROBOT':
+        if self.output == 'ROBOT':
             log = 'Sending to HSR TTS: ' + text
             self.logger.log(log)
 
@@ -43,7 +43,7 @@ class InputOutput(object):
             msg.sentence = text
 
             self.tts_pub.publish(msg)
-        elif OUTPUT == 'LOCAL':
+        elif self.output == 'LOCAL':
             self.tts_engine.say(text)
             self.tts_engine.runAndWait()
             

@@ -1,0 +1,29 @@
+version: "2.0"
+
+rules:
+
+  # Custom Actions
+
+- rule: Start learning ADL
+  steps:
+  - intent: intent_start_teaching_adl
+  - action: utter_start_teaching_adl
+  - action: action_simple_ros_command
+
+- rule: Stop learning ADL
+  steps:
+  - intent: intent_end_teaching_adl
+  - action: utter_end_teaching_adl
+  - action: action_simple_ros_command
+
+- rule: Rules unsupported
+  steps:
+  - intent: intent_create_adl_monitoring_rule
+  - action: utter_create_adl_monitoring_rule
+
+  # Speech Actions
+
+  # - rule: Say goodbye anytime the user says goodbye
+#   steps:
+#   - intent: goodbye
+#   - action: utter_goodbye

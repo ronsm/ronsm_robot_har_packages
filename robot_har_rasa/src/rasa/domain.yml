@@ -1,0 +1,27 @@
+version: "2.0"
+
+intents:
+  - intent_start_teaching_adl
+  - intent_end_teaching_adl
+  - intent_register_marker
+  - intent_look_at_marker
+  - intent_create_adl_monitoring_rule
+
+actions:
+  - action_simple_ros_command
+
+responses:
+  utter_look_at_marker:
+  - text: 'TODO'
+  utter_register_marker:
+  - text: 'TODO'
+  utter_start_teaching_adl:
+  - text: 'Ok, I am ready to learn your activity. Begin when you are ready.'
+  utter_end_teaching_adl:
+  - text: 'Ok, I am done learning your activity.'
+  utter_create_adl_monitoring_rule:
+  - text: 'Sorry, this feature is currently unsupported.'
+
+session_config:
+  session_expiration_time: 60
+  carry_over_slots_to_new_session: true

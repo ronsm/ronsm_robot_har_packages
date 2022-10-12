@@ -5,7 +5,7 @@ import rospy
 
 from log import Log
 
-from ronsm_messages.msg import dm_system_request
+from ronsm_messages.msg import dm_al_request
 
 class QuerySelection():
     def __init__(self):
@@ -20,7 +20,7 @@ class QuerySelection():
         self.prediction_s2 = None
         self.label_s2_if_matches = None
 
-        self.pub_dm_request = rospy.Publisher('/robot_har_dialogue_system/system_request', dm_system_request, queue_size=10)
+        self.pub_dm_request = rospy.Publisher('/robot_har_dialogue_system/al_request', dm_al_request, queue_size=10)
 
         self.logger.log_great('Ready.')
 
@@ -119,8 +119,7 @@ class QuerySelection():
             return False
 
     def label_query(self, options):
-        msg = dm_system_request()
-        msg.intent = 'har_adl_label_query'
+        msg = dm_al_request()
         msg.args = options
         log = 'Issuing query via dialogue system:' + str(options)
         self.logger.log_great(log)

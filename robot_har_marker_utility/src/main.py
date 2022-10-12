@@ -7,6 +7,8 @@ import tf2_ros
 import math
 from hsrb_interface import Robot
 
+from log import Log
+
 from std_msgs.msg import String, Bool
 from geometry_msgs.msg import Pose2D, PoseStamped
 from std_srvs.srv import Empty
@@ -17,6 +19,10 @@ look_at_marker = 'ar_marker/6'
 
 class Main():
     def __init__(self):
+        self.id = 'main'
+        self.logger = Log(self.id)
+        self.logger.startup_msg()
+
         rospy.init_node('robot_har_marker_utility')
 
         # Transform Listeners
@@ -25,8 +31,7 @@ class Main():
         self.tf = tf2_ros.TransformListener(self.tfBuffer)
 
         # ROS Subscribers
-        self.sub_register_marker = rospy.Subscriber('/robot_har_marker_utility/register_marker', String, callback=self.ros_callback_register_marker_callback)
-        self.sub_look_at_marker = rospy.Subscriber('/robot_har_marker_utility/look_at_marker', String, callback=self.ros_callback_look_at_marker_callback)
+        self.sub_entity_bus = rospy.Subscriber('/robot_har_rasa_core/entity_bus', String, callback=self.callback_entity_bus)
 
         # ROS Publishers
         self.pub_aligned = rospy.Publisher('/robot_har_marker_utility/aligned', Bool, queue_size=10)
@@ -47,7 +52,7 @@ class Main():
         self.marker_recognition_enabled = False
         self.target_marker = look_at_marker
 
-        print('Ready.')
+        self.logger.log_great('Ready.')
         
         rospy.spin()
 
@@ -71,9 +76,9 @@ class Main():
         except rospy.ServiceException as e:
                 print('Service call failed to /marker/stop_recognition')
 
-    # ROS Callbacks
+    # Core Functionality
 
-    def ros_callback_register_marker_callback(self, msg):
+    def register_marker(self):
         if not self.marker_recognition_enabled:
             self.enable_marker_recognition()
 
@@ -100,10 +105,10 @@ class Main():
             self.say('Ok, I will look at this marker.')
         else:
             self.target_marker = None
-            print('Unable to detect marker.')
+            self.logger.log_warn('Unable to detect marker.')
             self.say('Sorry, I was unable to detect a marker. If you like to try again, repeat the command.')        
 
-    def ros_callback_look_at_marker_callback(self, msg):
+    def look_at_marker(self):
         # enable marker recognition
         if not self.marker_recognition_enabled:
             self.enable_marker_recognition()
@@ -138,7 +143,7 @@ class Main():
                     marker_euler_r, marker_euler_p, marker_euler_y = self.euler_from_quaternion(marker_tf_to_base_link[1][0], marker_tf_to_base_link[1][1], marker_tf_to_base_link[1][2], marker_tf_to_base_link[1][3])
                     print('Marker Euler:', marker_euler_r, marker_euler_p, marker_euler_y)
                 except:
-                    print('Unable to lookup transform of marker.')
+                    self.logger.log_warn('Unable to lookup transform of marker.')
 
             if marker:
                 new_x = marker_tf[0][0]
@@ -147,14 +152,6 @@ class Main():
                 new_angle = robot_euler_y + marker_euler_y
                 new_angle = new_angle % (2 * math.pi)
                 print('Marker Euler:', marker_euler_y, 'New Angle:', new_angle)
-
-                # angle = marker_tf[1][2]
-                # angle = (angle + (math.pi / 2)) % (2 * math.pi)
-                # # offset_angle = marker_tf[1][3] + (math.pi / 2)
-                # opp_angle = (angle + math.pi) % (2 * math.pi)
-                # new_x = math.cos(opp_angle) + marker_tf[0][0]
-                # new_y = math.sin(opp_angle) + marker_tf[0][1]
-                # print('Angle:', angle, 'Opp Angle:', opp_angle, 'New X:', new_x, 'New Y:', new_y)
 
                 try:
                     self.base.go_abs(new_x, new_y, new_angle)
@@ -167,7 +164,7 @@ class Main():
                     self.whole_body.move_to_joint_positions({'head_tilt_joint': 0.0})
                     break
             else:
-                print('Unable to lookup transform of marker.')
+                self.logger.log_warn('Unable to lookup transform of marker.')
 
             self.whole_body.move_to_joint_positions({'head_tilt_joint': 0.0})
 
@@ -180,6 +177,17 @@ class Main():
         # disable marker recognition
         if self.marker_recognition_enabled:
             self.disable_marker_recognition()
+
+    # ROS Callback
+    def callback_entity_bus(self, msg):
+        intent = msg.data
+
+        if intent == 'intent_register_marker':
+            self.register_marker()
+        elif intent == 'intent_look_at_marker':
+            self.look_at_marker()
+        else:
+            self.logger.log_warn('Invalid intent. Disregarding input.')
 
     # HSR TTS
 

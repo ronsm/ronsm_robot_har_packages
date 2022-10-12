@@ -15,8 +15,6 @@ class HARInterface():
         self.pub_new_rule_start = rospy.Publisher('/robot_har_mln/mln/new_rule_start', String, queue_size=10)
         self.pub_new_rule_stop = rospy.Publisher('/robot_har_mln/mln/new_rule_stop', String, queue_size=10)
         self.pub_new_rule_label = rospy.Publisher('/robot_har_mln/mln/label', String, queue_size=10)
-        self.pub_register_marker = rospy.Publisher('/robot_har_marker_utility/register_marker', String, queue_size=10)
-        self.pub_look_at_marker = rospy.Publisher('/robot_har_marker_utility/look_at_marker', String, queue_size=10)
 
         self.logger.log_great('Ready.')
 
@@ -37,15 +35,3 @@ class HARInterface():
         msg.data = label
         
         self.pub_new_rule_label.publish(msg)
-
-    def register_marker(self):
-        msg = String()
-        msg.data = ''
-        
-        self.pub_register_marker.publish(msg)
-
-    def look_at_marker(self):
-        msg = String()
-        msg.data = ''
-
-        self.pub_look_at_marker.publish(msg)
