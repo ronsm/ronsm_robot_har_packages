@@ -1,6 +1,8 @@
 version: "2.0"
 
 nlu:
+
+# teaching commands
 - intent: intent_start_teaching_adl
   examples: |
     - i want you to learn my activity
@@ -25,6 +27,7 @@ nlu:
 
 - intent: intent_look_at_marker
   examples: |
+    - look at the marker
     - ok i have placed the marker
     - i've placed the marker
     - the marker is ready
@@ -40,3 +43,23 @@ nlu:
     - pleaase can you watch victor while he activity
     - make sure that you watch isa while she does activity
     - when isa is activity can you watch her for me
+
+# asking for help
+
+- intent: intent_pick_up_object
+  examples: |
+    - pick up the [cup](object)
+    - can you pick up the [bowl](object) for me
+    - please pick up the [bottle](object)
+    - pick up the [box](obejct) from the worktop
+    - can you pick up that [mug](object) please
+
+# synonyms
+
+# - synonym: cup
+#   examples: |
+#     - bowl
+#     - bottle
+#     - plate
+#     - box
+#     - mug

@@ -19,7 +19,7 @@ class Main():
         self.logger.startup_msg()
 
         rospack = rospkg.RosPack()
-        self.rel_path = rospack.get_path('robot_har_rasa_io')
+        self.rel_path = rospack.get_path('robot_har_rasa')
 
         self.io = InputOutput(self.rel_path, OUTPUT)
 
