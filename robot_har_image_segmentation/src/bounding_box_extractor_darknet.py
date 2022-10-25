@@ -109,7 +109,9 @@ class BoundingBoxExtractorDarknet():
         t.transform.rotation.z = q[2]
         t.transform.rotation.w = q[3]
 
-        self.pub_tf.sendTransform(t)
+        for i in range(0, 30):
+            self.pub_tf.sendTransform(t)
+            rospy.sleep(1)
 
 if __name__ == '__main__':
     bbed = BoundingBoxExtractorDarknet()
