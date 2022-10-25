@@ -98,9 +98,9 @@ class ADLSequenceModeller():
         # ROS Subscribers
         self.sub_pose = rospy.Subscriber('/global_pose', PoseStamped, callback=self.ros_callback_sub_pose)
         self.current_pose = PoseStamped()
-        self.sub_percept = rospy.Subscriber('/robot_har_percepts/percepts', har_percepts, callback=self.ros_callback_sub_percepts)
+        self.sub_percept = rospy.Subscriber('/robot_har_help_service/percept_tracker/percepts', har_percepts, callback=self.ros_callback_sub_percepts)
         self.current_percepts = {}
-        self.sub_manual_alignment = rospy.Subscriber('/robot_har_marker_utility/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
+        self.sub_manual_alignment = rospy.Subscriber('/robot_har_help_service/marker_align/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
         self.aligned = False
         self.sub_help_request = rospy.Subscriber('/robot_har_rasa_core/intent_bus', dm_intent, callback=self.ros_callback_sub_help_request)
 

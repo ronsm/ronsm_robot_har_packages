@@ -143,7 +143,7 @@ class Main():
         # ROS Publishers
         self.pub_ros_predictions = rospy.Publisher('/robot_har_mln/predictions', har_predictions, queue_size=10)
         self.pub_ros_evidence = rospy.Publisher('/robot_har_mln/db/evidence', har_evidence_list, queue_size=10)
-        self.pub_ros_move_to_room = rospy.Publisher('/robot_har_robot_mover/move_to_room', String, queue_size=10)
+        self.pub_ros_move_to_room = rospy.Publisher('/robot_har_help_service/move_to_room/request', String, queue_size=10)
         
         # ROS Action Servers
         self.action_name = 'robot_har_mln/har_reason'

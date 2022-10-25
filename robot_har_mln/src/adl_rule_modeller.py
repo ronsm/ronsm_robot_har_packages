@@ -33,7 +33,7 @@ class ADLRuleModeller():
 
         self.adlhh = ADLHelper(self.rel_path, reset=False)
 
-        self.pub_move_to_room = rospy.Publisher('/robot_har_robot_mover/move_to_room', String, queue_size=10)
+        self.pub_move_to_room = rospy.Publisher('/robot_har_help_service/move_to_room/request', String, queue_size=10)
 
         if reset:
             os.remove(self.status_file)
