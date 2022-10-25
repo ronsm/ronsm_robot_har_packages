@@ -14,20 +14,6 @@ class KnownDomainsHelper():
         self.count()
 
     def load_dbs(self):
-        path = self.rel_path + '/src/DBs/' + 'global' + '_DB_h.txt'
-
-        global_db_h = open(path, 'r')
-
-        samples_h = []
-        sample = []
-        for line in global_db_h:
-            l = line.rstrip('\n')
-            sample.append(l)
-            if l == '---':
-                sample.pop()
-                samples_h.append(sample)
-                sample = []
-
         path = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.txt'
 
         global_db_s = open(path, 'r')
@@ -42,7 +28,6 @@ class KnownDomainsHelper():
                 samples_s.append(sample)
                 sample = []
 
-        self.samples_h = samples_h
         self.samples_s = samples_s
 
     def count(self):

@@ -9,9 +9,12 @@ intents:
   - intent_create_adl_monitoring_rule
   # asking for help
   - intent_pick_up_object
+  - intent_go_to_room
+  - intent_hand_over
 
 entities:
   - object
+  - room
 
 actions:
   - action_simple_ros_command

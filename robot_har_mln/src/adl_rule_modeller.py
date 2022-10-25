@@ -7,7 +7,7 @@ from os.path import exists
 import rospy
 
 from log import Log
-from adl_hierarchy_helper import ADLHierarchyHelper
+from adl_helper import ADLHelper
 
 from std_msgs.msg import String
 from ronsm_messages.msg import har_arm_basic
@@ -31,7 +31,7 @@ class ADLRuleModeller():
 
         self.status_file = self.rel_path + '/src/pickle/rules/status.pickle'
 
-        self.adlhh = ADLHierarchyHelper(self.rel_path)
+        self.adlhh = ADLHelper(self.rel_path, reset=False)
 
         self.pub_move_to_room = rospy.Publisher('/robot_har_robot_mover/move_to_room', String, queue_size=10)
 
@@ -83,14 +83,14 @@ class ADLRuleModeller():
             self.logger.log_warn(log)
     
     def is_valid(self, when, do):
-        if (when in self.adlhh.get_children()) and (do in dos):
+        if (when in self.adlhh.get_adls()) and (do in dos):
             return True
         else:
             return False
 
     # Pro-Activity
 
-    def evaluate_rules(self, predictions_h, predictions_s, room):
+    def evaluate_rules(self, predictions_s, room):
         adl = predictions_s[-1][0]
 
         first = True

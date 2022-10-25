@@ -54,6 +54,24 @@ nlu:
     - pick up the [box](obejct) from the worktop
     - can you pick up that [mug](object) please
 
+- intent: intent_go_to_room
+  examples: |
+    - can you please go to the [bedroom](room)
+    - go to the [lounge](room)
+    - please go to the [kitchen](room)
+    - can you go to the [bathroom](room)
+    - take it to the [hall](room)
+    - bring it to the [bedroom](room)
+
+- intent: intent_hand_over
+  examples: |
+    - can you please hand it to me
+    - hand the object over to me
+    - hand me that
+    - hand me the bottle
+    - hand me the mug
+    - please hand it to me
+
 # synonyms
 
 # - synonym: cup

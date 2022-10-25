@@ -21,6 +21,21 @@ rules:
   - intent: intent_create_adl_monitoring_rule
   - action: utter_create_adl_monitoring_rule
 
+- rule: Rule for intent_pick_up_object
+  steps:
+  - intent: intent_pick_up_object
+  - action: action_simple_ros_command
+
+- rule: Rule for intent_go_to_room
+  steps:
+  - intent: intent_go_to_room
+  - action: action_simple_ros_command
+
+- rule: Rule for intent_hand_over
+  steps:
+  - intent: intent_hand_over
+  - action: action_simple_ros_command
+
   # Speech Actions
 
   # - rule: Say goodbye anytime the user says goodbye

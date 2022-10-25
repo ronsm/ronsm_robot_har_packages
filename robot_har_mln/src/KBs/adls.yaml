@@ -1,107 +1,30 @@
-Working:
-  - Working:
-      - rooms:
-          - Dining
-  - Studying:
-      - rooms:
-          - Dining
-  - Exercise:
-      - rooms:
-          - Lounge
-          - Bedroom
-  - UsingComputer:
-      - rooms:
-          - all
-Relaxing:
-  - Relaxing:
-      - rooms:
-          - Lounge
-          - Dining
-          - Bedroom
-  - WatchingTV:
-      - rooms:
-          - Lounge
-          - Bedroom
-  - Reading:
-      - rooms:
-          - Lounge
-          - Dining
-          - Bedroom
-  - ListeningToMusic:
-      - rooms:
-          - all
-  - Hobby:
-      - rooms:
-          - all
-  - UsingSmartphone:
-      - rooms:
-          - all
-  - UsingInternet:
-      - rooms:
-          - all
-FoodDrink:
-  - Cooking:
-      - rooms:
-          - Kitchen
-  - Eating:
-      - rooms:
-          - Dining
-          - Lounge
-  - Drinking:
-      - rooms:
-          - all
-  - Snacking:
-      - rooms:
-          - all
-  - PreparingDrink:
-      - rooms:
-          - Kitchen
-Chores:
-  - Cleaning:
-      - rooms:
-          - Kitchen
-          - Bathroom
-  - Tidying:
-      - rooms:
-          - all
-  - WashingDishes:
-      - rooms:
-          - Kitchen
-  - Laundry:
-      - rooms:
-          - Kitchen
-          - Bedroom
-Social:
-  - HostingGuests:
-      - rooms:
-          - all
-  - TalkingOnPhone:
-      - rooms:
-          - all
-PersonalHygeine:
-  - Toileting:
-      - rooms:
-          - Bathroom
-  - Bathing:
-      - rooms:
-          - Bathroom
-  - Showering:
-      - rooms:
-          - Bathroom
-  - Shaving:
-      - rooms:
-          - Bathroom
-  - BrushingTeeth:
-      - rooms:
-          - Bathroom
-  - TakingMedication:
-      - rooms:
-          - all
-  - GettingDressed:
-      - rooms:
-          - Bedroom
-Bed:
-  - Sleeping:
-      - rooms:
-          - Bedroom
-          - Lounge
+- Working
+- Studying
+- Exercise
+- UsingComputer
+- Relaxing
+- WatchingTV
+- Reading
+- ListeningToMusic
+- Hobby
+- UsingSmartphone
+- UsingInternet
+- Cooking
+- Eating
+- Drinking
+- Snacking
+- PreparingDrink
+- Cleaning
+- Tidying
+- WashingDishes
+- Laundry
+- HostingGuests
+- TalkingOnPhone
+- Toileting
+- Bathing
+- Showering
+- Shaving
+- BrushingTeeth
+- TakingMedication
+- GettingDressed
+- Sleeping

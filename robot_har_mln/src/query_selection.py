@@ -24,7 +24,7 @@ class QuerySelection():
 
         self.logger.log_great('Ready.')
 
-    def query_select(self, prediction_h, prediction_s1, prediction_h_f, prediction_s2, consistent_s1, consistent_s2, agree):
+    def query_select(self, prediction_s1, prediction_s2, consistent_s1, consistent_s2, agree):
         cs1 = consistent_s1
         cs2 = consistent_s2
         ag = agree

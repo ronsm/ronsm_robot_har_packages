@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
 
+import enum
+from operator import index
 import pickle
 import collections
 import pprint
@@ -13,17 +15,19 @@ import numpy as np
 from graph_tool.all import *
 import networkx as nx
 import matplotlib.pyplot as plt
+from soupsieve import match
 import rospy
 import threading
 from regex import D
 
-from adl_hierarchy_helper import ADLHierarchyHelper
+from adl_helper import ADLHelper
 from log import Log
 
 from std_msgs.msg import Bool
 from geometry_msgs.msg import PoseStamped
-from ronsm_messages.msg import har_percepts, har_percept
+from ronsm_messages.msg import har_percepts, har_percept, dm_intent
 
+valid_intents = ['intent_pick_up_object', 'intent_go_to_room', 'intent_hand_over']
 
 @dataclass
 class Times:
@@ -34,7 +38,7 @@ class Times:
 @dataclass
 class HelpRequest:
     help_requested: bool
-    help_types: List[str]
+    help_types: List[List[tuple]]
 
 
 @dataclass
@@ -58,7 +62,7 @@ class ChainState:
     agent: str
     action: str
     state: List[str]
-    time: Times
+    time: List[Times]
     percepts: Optional[List[Percept]]
     manual_alignment: Optional[bool]
     robot_pose: Optional[PoseStamped]
@@ -80,7 +84,7 @@ class ADLSequenceModeller():
         self.logger = Log(self.id)
 
         self.rel_path = rel_path
-        self.adlhh = ADLHierarchyHelper(self.rel_path)
+        self.adlhh = ADLHelper(self.rel_path, reset=False)
 
         self.block_entries = False
 
@@ -98,6 +102,7 @@ class ADLSequenceModeller():
         self.current_percepts = {}
         self.sub_manual_alignment = rospy.Subscriber('/robot_har_marker_utility/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
         self.aligned = False
+        self.sub_help_request = rospy.Subscriber('/robot_har_rasa_core/intent_bus', dm_intent, callback=self.ros_callback_sub_help_request)
 
         # ROS Publishers
         self.pub_pose = rospy.Publisher('/goal', PoseStamped, queue_size=10)
@@ -116,6 +121,8 @@ class ADLSequenceModeller():
         self.state_estimate_success_s1 = False
         self.state_estimate_success_s2 = False
 
+        self.locked = False
+
         # Segments (managed by main)
         self.s2_active = False
         self.s1 = []
@@ -124,12 +131,6 @@ class ADLSequenceModeller():
         self.s2_index = 0
 
         if reset:
-            self.logger.log_warn(
-                'Reset is set to TRUE. All existing ADL model pickle files will be deleted!')
-            decision = input('Are you sure you wish to continue? (y/n) ~> ')
-            if decision != 'y':
-                self.logger.log_warn('Exiting...')
-                exit(0)
             os.remove(self.status_file)
 
         if not exists(self.status_file):
@@ -146,7 +147,7 @@ class ADLSequenceModeller():
     # File Creation
 
     def create_adl_files(self):
-        adls = self.adlhh.get_children()
+        adls = self.adlhh.get_adls()
 
         for adl in adls:
             obj = self.create_adl_object(adl)
@@ -189,8 +190,8 @@ class ADLSequenceModeller():
     def stop_sequence(self, mode):
         self.train_stop_sequence()
 
-    def help_request(self, mode, help_type):
-        self.train_help_request(help_type)
+    def help_request(self, mode, help_type, help_args):
+        self.train_help_request(help_type, help_args)
 
     def label_sequence(self, mode, adl):
         self.train_label_sequence(adl)
@@ -205,7 +206,7 @@ class ADLSequenceModeller():
         self.actions = ['START']
         time_object = Times(0.0, 0.0)
         entry = ChainState(None, 'START', 'START', copy.deepcopy(
-            self.actions), time_object, None, self.aligned, self.current_pose, None, 1)
+            self.actions), [time_object], None, self.aligned, self.current_pose, None, 1)
         self.seq.append(entry)
 
     def train_action(self, agent, action):
@@ -216,16 +217,16 @@ class ADLSequenceModeller():
                 time), "{:.2f}".format(elapsed))
             self.actions.append(action)
             entry = ChainState(None, agent, action, copy.deepcopy(
-                self.actions), time_object, None, self.aligned, self.current_pose, None, 1)
+                self.actions), [time_object], None, self.aligned, self.current_pose, None, 1)
             self.seq.append(entry)
             self.prev_time = time
             self.aligned = False
 
-    def train_help_request(self, help_type):
+    def train_help_request(self, help_type, help_args):
         if self.seq[-1].help == None:
-            self.seq[-1].help = HelpRequest(True, [help_type])
+            self.seq[-1].help = HelpRequest(True, [[(help_type, help_args)]])
         else:
-            self.seq[-1].help.help_types.append(help_type)
+            self.seq[-1].help.help_types[0].append((help_type, help_args))
 
     def train_stop_sequence(self):
         if self.mode == 'predict':
@@ -236,7 +237,7 @@ class ADLSequenceModeller():
         time_object = Times("{:.2f}".format(time), "{:.2f}".format(elapsed))
         self.actions.append('END')
         entry = ChainState(None, 'END', 'END', self.actions,
-                           time_object, None, self.aligned, self.current_pose, None, 1)
+                           [time_object], None, self.aligned, self.current_pose, None, 1)
         self.seq.append(entry)
         self.mode = 'predict'
         self.update_markov_chains()
@@ -263,7 +264,7 @@ class ADLSequenceModeller():
         self.actions = ['START']
         time_object = Times(0.0, 0.0)
         entry = ChainState(self.s1_index, 'START', 'START', copy.deepcopy(
-            self.actions), time_object, None, None, self.current_pose, None, 1)
+            self.actions), [time_object], None, None, self.current_pose, None, 1)
         self.s1.append(entry)
         self.s1_index = self.s1_index + 1
 
@@ -274,7 +275,7 @@ class ADLSequenceModeller():
             time), "{:.2f}".format(elapsed))
         self.actions.append(action)
         entry = ChainState(self.s1_index, agent, action, copy.deepcopy(
-            self.actions), time_object, None, None, self.current_pose, None, 1)
+            self.actions), [time_object], None, None, self.current_pose, None, 1)
         self.s1.append(entry)
         self.prev_time = time
         self.s1_index = self.s1_index + 1
@@ -286,7 +287,7 @@ class ADLSequenceModeller():
                 time), "{:.2f}".format(elapsed))
             self.actions.append(action)
             entry = ChainState(self.s2_index, agent, action, copy.deepcopy(
-                self.actions), time_object, None, None, self.current_pose, None, 1)
+                self.actions), [time_object], None, None, self.current_pose, None, 1)
             self.s2.append(entry)
             self.prev_time = time
             self.s2_index = self.s2_index + 1
@@ -303,6 +304,7 @@ class ADLSequenceModeller():
 
     def estimate_state_unbounded(self):
         # s1
+        print(self.markov_chains_states.items())
         s1_candidates = []
         if len(self.s1) > 0:
             for adl, chain in self.markov_chains_states.items():
@@ -498,8 +500,16 @@ class ADLSequenceModeller():
     def execute_state(self):
         self.logger.log_mini_header('Execute State(s)')
         
-        if not self.state_estimate_success_s1:
-            return
+        if self.s2_active:
+            if (not self.state_estimate_success_s1) and (not self.state_estimate_success_s2):
+                self.locked = False
+                return
+        else:
+            if(not self.state_estimate_success_s1):
+                self.locked = False
+                return
+
+        self.locked = True
 
         # what percepts are we expecting?
         expected_percepts = []
@@ -558,7 +568,7 @@ class ADLSequenceModeller():
             self.actions = ['START']
             time_object = Times(0.0, 0.0)
             entry = ChainState(self.s2_index, 'START', 'START', copy.deepcopy(
-                self.actions), time_object, None, None, self.current_pose, None, 1)
+                self.actions), [time_object], None, None, self.current_pose, None, 1)
             self.s2.append(entry)
             self.s2_index = self.s2_index + 1
 
@@ -580,8 +590,27 @@ class ADLSequenceModeller():
 
         for seq in obj['sequences']:
             for state in seq:
-                if self.is_unique_chain_state(state, unique_chain_states):
+                is_unique, match_uid = self.is_unique_chain_state(state, unique_chain_states)
+                if is_unique:
                     unique_chain_states.append(state)
+                else:
+                    # help
+                    if state.help != None:
+                        if unique_chain_states[match_uid].help == None:
+                            unique_chain_states[match_uid].help = state.help
+                        else:
+                            unique_help = True
+                            for help_types in unique_chain_states[match_uid].help.help_types:
+                                if help_types == state.help.help_types[0]:
+                                    unique_help = False
+                            if unique_help:
+                                unique_chain_states[match_uid].help.help_types.append(state.help.help_types[0])
+
+                    # times
+                    unique_chain_states[match_uid].time.append(state.time)
+
+                    # percepts
+                    # maximum set?
 
         for i in range(0, len(unique_chain_states)):
             unique_chain_states[i].uid = i
@@ -617,8 +646,17 @@ class ADLSequenceModeller():
 
         G = nx.from_numpy_array(weights, create_using=nx.DiGraph)
 
+        color_map = []
+        for node in G:
+            if node == 0:
+                color_map.append('green')
+            elif G.out_degree(node) == 0:
+                color_map.append('red')
+            else:
+                color_map.append('blue')
+
         pos = nx.nx_agraph.graphviz_layout(G, prog='neato')
-        nx.draw_networkx_nodes(G, pos, node_size=800)
+        nx.draw_networkx_nodes(G, pos, node_color=color_map, node_size=800)
         nx.draw_networkx_edges(G, pos, edgelist=G.edges(),
                                width=1, arrows=True, arrowsize=20)
 
@@ -649,15 +687,15 @@ class ADLSequenceModeller():
         self.markov_chains_states[adl] = unique_chain_states
 
     def is_unique_chain_state(self, action, unique_chain_states):
-        for unique_chain_state in unique_chain_states:
+        for index, unique_chain_state in enumerate(unique_chain_states):
             if collections.Counter(unique_chain_state.state) == collections.Counter(action.state):
                 if unique_chain_state.action == action.action:
                     unique_chain_state.count = unique_chain_state.count + 1
-                    return False
-        return True
+                    return False, index
+        return True, 0
 
     def update_markov_chains(self):
-        adls = self.adlhh.get_children()
+        adls = self.adlhh.get_adls()
 
         for adl in adls:
             self.update_markov_chain(adl)
@@ -685,6 +723,13 @@ class ADLSequenceModeller():
         self.logger.log('Alignment message received.')
         if msg.data:
             self.aligned = True
+
+    def ros_callback_sub_help_request(self, msg):
+        if msg.intent in valid_intents:
+            log = 'Valid help request message received:' + msg.intent
+            self.logger.log(log)
+
+            self.help_request('train', msg.intent, msg.args)
 
 if __name__ == '__main__':
     ase = ADLSequenceModeller('/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)
@@ -736,6 +781,7 @@ if __name__ == '__main__':
     # ase.action('train', 'human', 'Tap')
     # ase.action('train', 'human', 'Kettle')
     # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.help_request('train', 'ExampleHelp', ['bottle'])
     # ase.action('train', 'human', 'CutleryDrawer')
     # ase.stop_sequence('train')
     # ase.label_sequence('train', 'PreparingDrink')
@@ -745,9 +791,18 @@ if __name__ == '__main__':
     # ase.action('train', 'human', 'Bin')
     # ase.action('train', 'human', 'Kettle')
     # ase.action('train', 'human', 'DrinkwareCabinet')
+    # ase.help_request('train', 'ExampleHelp', ['bottle'])
+    # ase.help_request('train', 'ExampleHelp2', ['bottle'])
     # ase.action('train', 'human', 'CutleryDrawer')
     # ase.stop_sequence('train')
     # ase.label_sequence('train', 'PreparingDrink')
+
+    ase.start_sequence('predict')
+    ase.action('predict', 'human', 'Tap')
+    ase.action('predict', 'human', 'Bin')
+    ase.action('predict', 'human', 'Kettle')
+    ase.action('predict', 'human', 'DrinkwareCabinet')
+    # ase.stop_sequence('predict')
 
     # ase.start_sequence('train')
     # ase.action('train', 'human', 'Bin')
@@ -803,9 +858,9 @@ if __name__ == '__main__':
     # ase.action('predict', 'human', 'Kettle')
     # ase.action('predict', 'human', 'FoodCabinet')
 
-    ase.start_sequence('predict')
-    ase.action('predict', 'human', 'FoodCabinet', prediction='Cooking')
-    ase.action('predict', 'human', 'Fridge', prediction='Cooking')
+    # ase.start_sequence('predict')
+    # ase.action('predict', 'human', 'FoodCabinet', prediction='Cooking')
+    # ase.action('predict', 'human', 'Fridge', prediction='Cooking')
 
     # ase.start_sequence('train')
     # ase.action('train', 'human', 'Tap')
