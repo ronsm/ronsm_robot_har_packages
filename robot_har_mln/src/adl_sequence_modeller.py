@@ -9,7 +9,7 @@ import os
 from dataclasses import dataclass
 from os.path import exists
 from time import perf_counter
-from typing import Optional, List
+from typing import Optional, List, Set
 import copy
 import numpy as np
 from graph_tool.all import *
@@ -22,6 +22,7 @@ from regex import D
 
 from adl_helper import ADLHelper
 from log import Log
+from object_pool import ObjectPool
 
 from std_msgs.msg import Bool
 from geometry_msgs.msg import PoseStamped
@@ -51,19 +52,13 @@ class RobotPose:
 
 
 @dataclass
-class Percept:
-    name: str
-    prob: float
-
-
-@dataclass
 class ChainState:
     uid: Optional[int]
     agent: str
     action: str
     state: List[str]
     time: List[Times]
-    percepts: Optional[List[Percept]]
+    percepts: Optional[Set[str]]
     manual_alignment: Optional[bool]
     robot_pose: Optional[PoseStamped]
     help: Optional[HelpRequest]
@@ -85,6 +80,7 @@ class ADLSequenceModeller():
 
         self.rel_path = rel_path
         self.adlhh = ADLHelper(self.rel_path, reset=False)
+        self.op = ObjectPool()
 
         self.block_entries = False
 
@@ -98,8 +94,6 @@ class ADLSequenceModeller():
         # ROS Subscribers
         self.sub_pose = rospy.Subscriber('/global_pose', PoseStamped, callback=self.ros_callback_sub_pose)
         self.current_pose = PoseStamped()
-        self.sub_percept = rospy.Subscriber('/robot_har_help_service/percept_tracker/percepts', har_percepts, callback=self.ros_callback_sub_percepts)
-        self.current_percepts = {}
         self.sub_manual_alignment = rospy.Subscriber('/robot_har_help_service/marker_align/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
         self.aligned = False
         self.sub_help_request = rospy.Subscriber('/robot_har_rasa_core/intent_bus', dm_intent, callback=self.ros_callback_sub_help_request)
@@ -178,11 +172,13 @@ class ADLSequenceModeller():
         log = 'Action: (' + mode + ', ' + agent + ', ' + action + ', ' + str(prediction) + ')'
         self.logger.log(log)
 
-        self.current_percepts = {}
         if mode == 'train':
+            self.save_percepts()
             self.train_action(agent, action)
+            self.op.reset()
         elif mode == 'predict':
             self.predict_action(agent, action, prediction)
+            self.op.reset()
         else:
             log = 'Invalid mode passed to action.'
             self.logger.log_warn(log)
@@ -572,6 +568,12 @@ class ADLSequenceModeller():
             self.s2.append(entry)
             self.s2_index = self.s2_index + 1
 
+    def save_percepts(self):
+        current_percepts = self.op.get_percepts()
+        self.s1[-1].percepts = copy.deepcopy(current_percepts)
+        if self.s2_active:
+            self.s2[-1].percepts = copy.deepcopy(current_percepts)
+
     # Markov Chains
 
     def update_markov_chain(self, adl):
@@ -703,21 +705,6 @@ class ADLSequenceModeller():
     # ROS Callbacks
     def ros_callback_sub_pose(self, msg):
         self.current_pose = msg
-
-    def ros_callback_sub_percepts(self, msg):
-        for percept in msg.percepts:
-            self.current_percepts[percept.name] = percept.conf
-
-        percepts = []
-        for percept, conf in self.current_percepts.items():
-            p = Percept()
-            p.name = percept
-            p.conf = conf
-            percepts.append(p)
-
-        self.s1[-1].percepts = copy.deepcopy(percepts)
-        if self.s2_active:
-            self.s2[-1].percepts = copy.deepcopy(percepts)
 
     def ros_callback_sub_manual_alignment(self, msg):
         self.logger.log('Alignment message received.')

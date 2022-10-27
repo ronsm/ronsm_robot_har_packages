@@ -16,7 +16,7 @@ from std_msgs.msg import String
 # none
 
 class Speak():
-    def __init__(self, speak):
+    def __init__(self):
         # set up logger
         self.id = 'speak'
         self.logger = Log(self.id)
@@ -28,9 +28,6 @@ class Speak():
         self.logger.log_great('Ready.')
 
     def request(self, text):
-        log = 'Sending to HSR TTS: ' + text
-        self.logger.log(log)
-
         msg = Voice()
         msg.language = 1
         msg.interrupting = True
@@ -38,3 +35,5 @@ class Speak():
         msg.sentence = text
 
         self.ros_pub_tts.publish(msg)
+
+        self.logger.log(text)

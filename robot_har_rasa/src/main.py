@@ -10,7 +10,7 @@ from input_output import InputOutput
 
 RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 OUTPUT = 'ROBOT'
-INPUT = 'KEYBOARD'
+INPUT = 'MICROPHONE'
 
 class Main():
     def __init__(self):
@@ -37,9 +37,9 @@ class Main():
             if cmd == 'exit':
                 sys.exit(0)
             elif cmd == 'x':
-                if OUTPUT == 'KEYBOARD':
+                if INPUT == 'KEYBOARD':
                     utterance = input('utterance: ')
-                elif OUTPUT == 'MICROPHONE':
+                elif INPUT == 'MICROPHONE':
                     utterance = self.io.listen() # enable this to get input from microphone instead of keyboard
             self.send_to_rasa(utterance)
             rospy.sleep(0.5)
@@ -53,12 +53,14 @@ class Main():
 
         response = response.json()
 
-        response = response[0]
-
-        message = response['text']
-
-        print(message)
-        self.io.say(message)
+        try:
+            response = response[0]
+            message = response['text']
+            
+            print(message)
+            self.io.say(message)
+        except:
+            self.logger.log_warn('No response provided by RASA. This may be intentional behaviour in some cases.')
 
 if __name__ == '__main__':
     m = Main()

@@ -70,9 +70,15 @@ class PickFromTF():
                 self.body.move_end_effector_pose(HAND_BACK, HAND_TF)
 
                 self.body.move_to_neutral()
-            except:
+            except Exception as e:
+                print(e)
                 error = True
                 self.logger.log_warn('Failed to grasp.')
 
         if error:
             self.logger.log_warn('An error occured while executing this action.')
+
+        if error:
+            return False
+        else:
+            return True

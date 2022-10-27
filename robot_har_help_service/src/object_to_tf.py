@@ -19,7 +19,7 @@ from darknet_ros_msgs.msg import BoundingBoxes
 # none
 
 # constants and parameters
-MAX_WAIT = 10
+MAX_WAIT = 30
 
 class ObjectToTF():
     def __init__(self, speak):
@@ -34,7 +34,7 @@ class ObjectToTF():
 
         self.ros_pub_depth = rospy.Publisher('/robot_har_help_service/object_to_tf/depth_out', PointCloud2, queue_size=10)
         self.ros_pub_centre_depth = rospy.Publisher('/robot_har_help_service/object_to_tf/depth_centre_out', Int32, queue_size=10)
-        self.ros_pub_tf = tf2_ros.TransformBroadcaster()
+        self.ros_pub_tf = tf2_ros.StaticTransformBroadcaster()
 
         # set up HSR
         self.speak = speak
@@ -49,7 +49,7 @@ class ObjectToTF():
 
     # core logic
 
-    def request(self, object):
+    def request(self, target):
         waits = 0
         while(self.bounding_boxes == None):
             self.logger.log('Waiting for bounding boxes...')
@@ -69,7 +69,7 @@ class ObjectToTF():
                 return False
 
         for bounding_box in self.bounding_boxes:
-            if bounding_box.Class == object:
+            if bounding_box.Class == target:
                 self.segment(bounding_box)
                 return True
 
@@ -89,13 +89,12 @@ class ObjectToTF():
         for sample in flat_subsample:
             sumd = sumd + sample[2]
         avg = sumd / len(flat_subsample)
-        x_pos = subsample.shape[1] / 2
-        y_pos = subsample.shape[0] / 2
-        print(subsample.shape)
-        x_pos = int(round(x_pos, 0))
-        y_pos = int(round(y_pos, 0))
-        print(x_pos, y_pos)
-        point = subsample[x_pos, y_pos]
+        row = subsample.shape[0] / 2
+        col = subsample.shape[1] / 2
+        row = int(round(row, 0))
+        col = int(round(col, 0))
+        print(row, col)
+        point = subsample[row, col]
         print('Centre:', point, avg)
 
         t = TransformStamped()
@@ -114,9 +113,7 @@ class ObjectToTF():
         t.transform.rotation.z = q[2]
         t.transform.rotation.w = q[3]
 
-        for i in range(0, 30):
-            self.ros_pub_tf.sendTransform(t)
-            rospy.sleep(1)
+        self.ros_pub_tf.sendTransform(t)
 
     # callbacks
 
