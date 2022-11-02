@@ -1,6 +1,9 @@
 version: "2.0"
 
 intents:
+  # accept/reject
+  - intent_accept
+  - intent_reject
   # teaching commands 
   - intent_start_teaching_adl
   - intent_end_teaching_adl

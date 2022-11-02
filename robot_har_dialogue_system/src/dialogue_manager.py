@@ -24,7 +24,7 @@ class LabelEncapsulator(object):
         self.semantic_description = semantic_description
 
 class DialogueManager(object):
-    def __init__(self, rel_path, label_linker):
+    def __init__(self, rel_path, label_linker, output):
         self.id = 'dialogue_manager'
 
         self.logger = Log(self.id)
@@ -38,7 +38,7 @@ class DialogueManager(object):
         self.aiml.learn(aiml_path)
         self.aiml.respond('load aiml go')
 
-        self.responder = Responder(self.rel_path)
+        self.responder = Responder(self.rel_path, output)
 
         self.semantic_ADLs = SemanticADLs()
         self.labels_dict = self.semantic_ADLs.get_semantic_ADLs()
@@ -48,7 +48,7 @@ class DialogueManager(object):
         self.follow_up = False
         self.options = ['null', 'null']
 
-        self.io = InputOutput(self.rel_path)
+        self.io = InputOutput(self.rel_path, output)
         self.hi = HARInterface()
 
         self.pub_ros_arm_add_rule = rospy.Publisher('/robot_har_mln/arm/add_rule', har_arm_basic, queue_size=10)

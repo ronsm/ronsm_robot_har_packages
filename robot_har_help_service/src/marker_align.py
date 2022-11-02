@@ -2,6 +2,7 @@
 
 # standard libraries
 import rospy
+import actionlib
 import tf as tf1
 import tf2_ros
 import math
@@ -13,6 +14,9 @@ from log import Log
 from std_msgs.msg import String, Bool
 from std_srvs.srv import Empty
 from tmc_msgs.msg import Voice
+from geometry_msgs.msg import PoseStamped, Point, Quaternion
+from actionlib_msgs.msg import GoalStatus
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
 # custom messages
 # none
@@ -33,6 +37,10 @@ class MarkerAlign():
         self.tf2 = tf2_ros.TransformListener(self.tf2_buffer)
 
         self.ros_pub_aligned = rospy.Publisher('/robot_har_help_service/marker_align/aligned', Bool, queue_size=10)
+        self.ros_sub_adjust = rospy.Subscriber('/robot_har_help_service/marker_align/adjust', PoseStamped, callback=self.ros_callback_adjust)
+
+        self.ros_ac_move_base = actionlib.SimpleActionClient('/move_base/move', MoveBaseAction)
+        self.ros_ac_move_base.wait_for_server()
 
         rospy.wait_for_service('/marker/start_recognition')
         rospy.wait_for_service('/marker/stop_recognition')
@@ -91,9 +99,9 @@ class MarkerAlign():
 
         self.speak.request('I will now try to align with your marker.')
 
-        self.body.move_to_joint_positions({'arm_flex_joint': -2.5, 'wrist_flex_joint': 1.2})
+        # self.body.move_to_joint_positions({'arm_flex_joint': -2.5, 'wrist_flex_joint': 1.2})
         self.body.move_to_joint_positions({'head_tilt_joint': 0.0})
-        self.body.move_to_joint_positions({'arm_lift_joint': 0.45})
+        # self.body.move_to_joint_positions({'arm_lift_joint': 0.45})
         rospy.sleep(0.5)
 
         for i in range(0, 20):
@@ -187,3 +195,27 @@ class MarkerAlign():
             self.marker_recognition_enabled = False
         except rospy.ServiceException as e:
                 self.logger.log_warn('Service call failed to /marker/stop_recognition.')
+
+    # callbacks
+
+    def ros_callback_adjust(self, msg):
+        pose = msg
+        pose.header.stamp = rospy.Time.now()
+        
+        goal = MoveBaseGoal()
+        goal.target_pose = pose
+
+        self.ros_ac_move_base.send_goal(goal)
+        
+        self.ros_ac_move_base.wait_for_result(rospy.Duration(60))
+
+        action_state = self.ros_ac_move_base.get_state()
+        if action_state == GoalStatus.SUCCEEDED:
+            self.logger.log_great('Action completed successfully.')
+            # self.body.move_to_joint_positions({'arm_flex_joint': -2.5, 'wrist_flex_joint': 1.2})
+            self.body.move_to_joint_positions({'head_tilt_joint': 0.0})
+            # self.body.move_to_joint_positions({'arm_lift_joint': 0.45})
+            return True
+        else:
+            self.logger.log_warn('Action failed to complete. Ensure path to location is not obstructed.')
+            return False

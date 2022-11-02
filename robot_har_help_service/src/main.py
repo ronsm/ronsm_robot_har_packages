@@ -12,9 +12,10 @@ from object_to_tf import ObjectToTF
 from pick_from_tf import PickFromTF
 from move_to_room import MoveToRoom
 from marker_align import MarkerAlign
+from hand_over import HandOver
 
 # standard messages
-# none
+from std_msgs.msg import String
 
 # custom messages
 from ronsm_messages.msg import dm_intent
@@ -27,11 +28,13 @@ class Main():
         # set up logger
         self.id = 'main'
         self.logger = Log(self.id)
+        self.logger.startup_msg()
 
         # set up ROS
         rospy.init_node('robot_har_help_service')
 
         self.ros_sub_intent_bus = rospy.Subscriber('/robot_har_rasa_core/intent_bus', dm_intent, callback=self.ros_callback_intent_bus)
+        self.ros_pub_action_end = rospy.Publisher('/robot_har_rasa_core/action_end', String, queue_size=10)
 
         # set up HSR
         self.robot = Robot()
@@ -50,6 +53,7 @@ class Main():
         self.pick_from_tf = PickFromTF(self.speak, self.base, self.body, self.grip)
         self.move_to_room = MoveToRoom(self.speak)
         self.marker_align = MarkerAlign(self.speak, self.base, self.body)
+        self.hand_over = HandOver(self.speak, self.body, self.grip)
 
         # ready
         self.speak.request('Ready to help.')
@@ -63,6 +67,7 @@ class Main():
         log = 'Processing intent: ' + intent
         self.logger.log(log)
 
+        # should match those in robot_har_rasa 
         if intent == 'intent_pick_up_object':
             if len(args) == 1:
                 self.intent_pick_up_object(target=args[0])
@@ -73,10 +78,27 @@ class Main():
                 self.intent_go_to_room(target=args[0])
             else:
                 self.log_intent_missing_args(intent)
+        elif intent == 'intent_hand_over':
+            if len(args) == 0:
+                self.hand_over.request()
+            else:
+                self.log_intent_missing_args(intent)
+        elif intent == 'intent_register_marker':
+            if len(args) == 0:
+                self.marker_align.request_register_marker()
+            else:
+                self.log_intent_missing_args(intent)
+        elif intent == 'intent_look_at_marker':
+            if len(args) == 0:
+                self.marker_align.request_look_at_marker()
+            else:
+                self.log_intent_missing_args(intent)
+        elif intent == 'intent_test_speech':
+            self.speak.request('This is a test of the speech.')
+            self.speak.request('This sentence should not interrupt the previous one.')
         else:
             log = 'No service handler available for intent: ' + intent
             self.logger.log_warn(log)
-            self.speak.request('Sorry, I am unable to help you with that.')
 
     # callbacks
 
@@ -86,6 +108,10 @@ class Main():
     # help services
 
     def intent_pick_up_object(self, target):
+        log = 'Waiting to ensure images are up to date...'
+        self.logger.log(log)
+        rospy.sleep(10)
+
         success = self.object_to_transform.request(target)
         if not success:
             say = 'Sorry, I was unable to detect the ' + target
@@ -124,9 +150,15 @@ class Main():
 
     def log_action_success(self):
         self.logger.log_great('Help request actioned successfully.')
+        msg = String()
+        msg.data = 'success'
+        self.ros_pub_action_end.publish(msg)
 
     def log_action_failure(self):
         self.logger.log_warn('Help request action failure.')
+        msg = String()
+        msg.data = 'failure'
+        self.ros_pub_action_end.publish(msg)
 
         # intent_pick_up_object
         # obejct = msg.args[0]

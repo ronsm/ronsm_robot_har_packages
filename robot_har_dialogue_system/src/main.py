@@ -13,7 +13,7 @@ from har_interface import HARInterface
 from responder import Responder
 
 from std_msgs.msg import String
-from ronsm_messages.msg import dm_al_request
+from ronsm_messages.msg import dm_al_request, dm_intent
 
 OUTPUT = 'ROBOT'
 
@@ -33,15 +33,15 @@ class Main():
 
         self.dataset = 'semantic_ADLs'
         self.label_linker = LabelLinker(self.dataset)
-        self.dialogue_manager = DialogueManager(self.rel_path, self.label_linker)
+        self.dialogue_manager = DialogueManager(self.rel_path, self.label_linker, OUTPUT)
 
         self.io = InputOutput(self.rel_path, OUTPUT)
         self.hi = HARInterface()
-        self.responder = Responder(self.rel_path)
+        self.responder = Responder(self.rel_path, OUTPUT)
 
         rospy.init_node('robot_har_dialogue_system')
         self.sub_al_request = rospy.Subscriber('/robot_har_dialogue_system/al_request', dm_al_request, self.callback_al_request)
-        self.sub_intent_bus = rospy.Subscriber('/robot_har_rasa_core/intent_bus', String, self.callback_process_intent)
+        self.sub_intent_bus = rospy.Subscriber('/robot_har_rasa_core/intent_bus', dm_intent, self.callback_process_intent)
 
         self.logger.log_great('Ready.')
 
@@ -50,9 +50,8 @@ class Main():
     # ROS Callbacks
 
     def callback_process_intent(self, msg):
-        intent = msg.data
+        intent = msg.intent
         if intent == 'intent_start_teaching_adl':
-            print('Testing')
             self.hi.start_teaching_adl()
         elif intent == 'intent_end_teaching_adl':
             rospy.sleep(8)

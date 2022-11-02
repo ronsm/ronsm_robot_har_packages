@@ -9,7 +9,7 @@ from tmc_msgs.msg import Voice
 from log import Log
 
 class InputOutput(object):
-    def __init__(self, rel_path, ouput):
+    def __init__(self, rel_path, output):
         self.id = 'input_outpt'
         self.logger = Log(self.id)
 

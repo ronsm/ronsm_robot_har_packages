@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 
+# standard libraries
 import sys
 import rospy
 import rospkg
 import requests
 
+# internal classes
 from log import Log
 from input_output import InputOutput
+
+# standard messages
+# none
+
+# custom messages
+from ronsm_messages.msg import dm_intent
+
+# constants and parameters
+# none
 
 RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 OUTPUT = 'ROBOT'
@@ -14,22 +25,28 @@ INPUT = 'MICROPHONE'
 
 class Main():
     def __init__(self):
+        # set up logger
         self.id = 'main'
         self.logger = Log(self.id)
         self.logger.startup_msg()
 
+        # set up ROS
         rospack = rospkg.RosPack()
         self.rel_path = rospack.get_path('robot_har_rasa')
 
-        self.io = InputOutput(self.rel_path, OUTPUT)
+        self.ros_sub_offer_help = rospy.Subscriber('/robot_har_mln/asm/offer_help', dm_intent, callback=self.ros_callback_offer_help)
 
         rospy.init_node('robot_har_rasa')
 
+        # set up classes
+        self.io = InputOutput(self.rel_path, OUTPUT)
+
+        # ready
         self.logger.log_great('Ready.')
 
         self.spin()
 
-    # Spin
+    # core logic
 
     def spin(self):
         while not rospy.is_shutdown():
@@ -44,7 +61,29 @@ class Main():
             self.send_to_rasa(utterance)
             rospy.sleep(0.5)
 
-    # RASA Interaction
+    def offer_help(self, intent, args):
+        # should match those in robot_har_help_service
+        if intent == 'intent_pick_up_object':
+            say = 'Would you like me to pick up the ' + args[0] + '?'
+            self.io.request(say)
+        elif intent == 'intent_go_to_room':
+            say = 'Shall I go to the ' + args[0] + '?'
+            self.io.request(say)
+        elif intent == 'intent_align_workspace':
+            say = 'Should I move closer to the workspace?'
+            self.io.request(say)
+        else:
+            log = 'No service handler available for intent: ' + intent
+            self.logger.log_warn(log)
+            return
+
+        if INPUT == 'KEYBOARD':
+            utterance = input('utterance: ')
+        elif INPUT == 'MICROPHONE':
+            utterance = self.io.listen() # enable this to get input from microphone instead of keyboard
+        self.send_to_rasa(utterance)
+
+    # RASA interaction
 
     def send_to_rasa(self, utterance):
         request = {'message': utterance}
@@ -58,9 +97,14 @@ class Main():
             message = response['text']
             
             print(message)
-            self.io.say(message)
+            self.io.request(message)
         except:
             self.logger.log_warn('No response provided by RASA. This may be intentional behaviour in some cases.')
+
+    # callbacks
+
+    def ros_callback_offer_help(self, msg):
+        self.offer_help(msg.intent, msg.args)
 
 if __name__ == '__main__':
     m = Main()

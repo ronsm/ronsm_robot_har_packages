@@ -2,6 +2,23 @@ version: "2.0"
 
 nlu:
 
+# accpt/reject
+- intent: intent_accept
+  examples: |
+    - yes
+    - yes please
+    - please do
+    - yeah
+    - yeah go ahead
+
+- intent: intent_reject
+  examples: |
+    - no
+    - no thanks
+    - no thank you
+    - please don't
+    - don't do that  
+
 # teaching commands
 - intent: intent_start_teaching_adl
   examples: |

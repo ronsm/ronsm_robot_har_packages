@@ -11,10 +11,12 @@ from os.path import exists
 from time import perf_counter
 from typing import Optional, List, Set
 import copy
+from lockfile import locked
 import numpy as np
 from graph_tool.all import *
 import networkx as nx
 import matplotlib.pyplot as plt
+from numpy import False_
 from soupsieve import match
 import rospy
 import threading
@@ -24,11 +26,15 @@ from adl_helper import ADLHelper
 from log import Log
 from object_pool import ObjectPool
 
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 from geometry_msgs.msg import PoseStamped
 from ronsm_messages.msg import har_percepts, har_percept, dm_intent
+from geometry_msgs.msg import PoseStamped, Point, Quaternion
+from actionlib_msgs.msg import GoalStatus
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
-valid_intents = ['intent_pick_up_object', 'intent_go_to_room', 'intent_hand_over']
+help_intents = ['intent_pick_up_object', 'intent_go_to_room', 'intent_hand_over']
+accept_reject_intents = ['intent_accept', 'intent_reject', 'intent_wait']
 
 @dataclass
 class Times:
@@ -72,6 +78,8 @@ class CandidateState:
     probs: Optional[dict]
 
 VERBOSE = True
+MAX_WAIT_ACCEPT_REJECT = 20
+MAX_WAIT_ACTION_END = 60
 
 class ADLSequenceModeller():
     def __init__(self, rel_path, reset=False):
@@ -95,11 +103,13 @@ class ADLSequenceModeller():
         self.sub_pose = rospy.Subscriber('/global_pose', PoseStamped, callback=self.ros_callback_sub_pose)
         self.current_pose = PoseStamped()
         self.sub_manual_alignment = rospy.Subscriber('/robot_har_help_service/marker_align/aligned', Bool, callback=self.ros_callback_sub_manual_alignment)
-        self.aligned = False
         self.sub_help_request = rospy.Subscriber('/robot_har_rasa_core/intent_bus', dm_intent, callback=self.ros_callback_sub_help_request)
+        self.sub_action_end = rospy.Subscriber('/robot_har_rasa_core/action_end', String, callback=self.ros_callback_sub_action_end)
 
         # ROS Publishers
-        self.pub_pose = rospy.Publisher('/goal', PoseStamped, queue_size=10)
+        self.pub_adjust = rospy.Publisher('/robot_har_help_service/marker_align/adjust', PoseStamped, queue_size=10)
+        self.pub_offer_help = rospy.Publisher('/robot_har_mln/asm/offer_help', dm_intent, queue_size=10)
+        self.pub_intent_bus = rospy.Publisher('/robot_har_rasa_core/intent_bus', dm_intent, queue_size=10)
 
         # Markov Chains
         self.markov_chains = {}
@@ -116,6 +126,9 @@ class ADLSequenceModeller():
         self.state_estimate_success_s2 = False
 
         self.locked = False
+
+        self.accept_reject_help = None
+        self.action_end = False
 
         # Segments (managed by main)
         self.s2_active = False
@@ -202,7 +215,7 @@ class ADLSequenceModeller():
         self.actions = ['START']
         time_object = Times(0.0, 0.0)
         entry = ChainState(None, 'START', 'START', copy.deepcopy(
-            self.actions), [time_object], None, self.aligned, self.current_pose, None, 1)
+            self.actions), [time_object], None, False, self.current_pose, None, 1)
         self.seq.append(entry)
 
     def train_action(self, agent, action):
@@ -213,10 +226,9 @@ class ADLSequenceModeller():
                 time), "{:.2f}".format(elapsed))
             self.actions.append(action)
             entry = ChainState(None, agent, action, copy.deepcopy(
-                self.actions), [time_object], None, self.aligned, self.current_pose, None, 1)
+                self.actions), [time_object], None, False, self.current_pose, None, 1)
             self.seq.append(entry)
             self.prev_time = time
-            self.aligned = False
 
     def train_help_request(self, help_type, help_args):
         if self.seq[-1].help == None:
@@ -233,7 +245,7 @@ class ADLSequenceModeller():
         time_object = Times("{:.2f}".format(time), "{:.2f}".format(elapsed))
         self.actions.append('END')
         entry = ChainState(None, 'END', 'END', self.actions,
-                           [time_object], None, self.aligned, self.current_pose, None, 1)
+                           [time_object], None, False_, self.current_pose, None, 1)
         self.seq.append(entry)
         self.mode = 'predict'
         self.update_markov_chains()
@@ -494,6 +506,10 @@ class ADLSequenceModeller():
                     self.logger.log(log)
 
     def execute_state(self):
+        x = threading.Thread(target=self.execute_state_thread, args=())
+        x.start()
+    
+    def execute_state_thread(self):
         self.logger.log_mini_header('Execute State(s)')
         
         if self.s2_active:
@@ -521,33 +537,131 @@ class ADLSequenceModeller():
         log = 'Expected percepts: ' + str(expected_percepts)
         self.logger.log(log)
 
+        # does the robot need to move?
+        if self.state_current_s1[0].estimate == 'exact':
+            if self.state_current_s1[0].state.manual_alignment:
+                log = 'Robot pose may need to be adjusted.'
+                self.logger.log(log)
+                wait = 0
+                while(self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
+                    wait = wait + 1
+                    rospy.sleep(1)
+                if wait == MAX_WAIT_ACCEPT_REJECT:
+                    log = 'No valid response to help request received in time.'
+                    self.logger.log_warn(log)
+
+                if self.accept_reject_help == 'intent_accept':
+                    self.adjust_robot_pose(self.state_current_s1[0].state.robot_pose)
+                    log = 'Robot pose is being adjusted.'
+                    self.logger.log(log)
+                else:
+                    return
+            else:
+                log = 'Robot pose does not need to be adjusted.'
+                self.logger.log(log)
+
         # what help can we offer?
-        potential_help = []
+        potential_helps = []
         for state in self.state_current_s1:
             if state.state.help != None:
-                potential_help = potential_help + state.state.help.help_types
+                potential_helps = potential_helps + state.state.help.help_types
 
         if self.s2_active and self.state_estimate_success_s2:
             for state in self.state_current_s2:
                 if state.state.help != None:
-                    potential_help = potential_help + state.state.help.help_types
+                    potential_helps = potential_helps + state.state.help.help_types
 
-        log = 'Potential help: ' + str(potential_help)
-        self.logger.log(log)
+        log = 'Potential help: ' + str(potential_helps)
+        self.logger.log(log)            
 
-        # does the robot need to move?
-        if self.state_current_s1[0].estimate == 'exact':
-            if self.state_current_s1[0].state.manual_alignment:
-                self.pub_pose.publish(self.state_current_s1[0].state.robot_pose)
-                log = 'Robot pose is being adjusted.'
-                self.logger.log(log)
-            else:
-                log = 'Robot pose is NOT being adjusted.'
-                self.logger.log(log)
+        locked_path = -1
+        for i in range(0, len(potential_helps)):
+            item = potential_helps[i][0]
+
+            msg = dm_intent()
+            msg.intent = item[0]
+            msg.args = item[1]
+            self.pub_offer_help.publish(msg)
+
+            wait = 0
+            while (self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
+                wait = wait + 1
+                rospy.sleep(1)
+            if wait == MAX_WAIT_ACCEPT_REJECT:
+                log = 'No valid response to help request received in time.'
+                self.logger.log_warn(log)
+
+            if self.accept_reject_help == 'intent_accept':
+                locked_path = i
+            
+            if locked_path != -1:
+                break
+
+        print(locked_path)
+        print(self.accept_reject_help)
+        self.accept_reject_help = None
+        
+        if locked_path != -1:
+            for i in range(0, len(potential_helps[locked_path])):
+                if i == 0:
+                    msg = dm_intent()
+                    msg.intent = item[0]
+                    msg.args = item[1]
+                    self.pub_intent_bus.publish(msg)
+
+                    log = 'Waiting for help request action to complete...'
+                    self.logger.log(log)
+                    wait = 0
+                    while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
+                        wait = wait + 1
+                        rospy.sleep(1)
+                    if wait == MAX_WAIT_ACTION_END:
+                        log = 'Action appears not to have completed on time. Help sequence will terminate.'
+                        self.logger.log_warn(log)
+                        break
+                else:
+                    msg = dm_intent()
+                    msg.intent = potential_helps[locked_path][i][0]
+                    msg.args = potential_helps[locked_path][i][1]
+                    self.pub_offer_help.publish(msg)
+
+                    wait = 0
+                    while (self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
+                        wait = wait + 1
+                        rospy.sleep(1)
+                    if wait == MAX_WAIT_ACCEPT_REJECT:
+                        log = 'No valid response to help request received in time.'
+                        self.logger.log_warn(log)
+
+                    if self.accept_reject_help == 'intent_accept':
+                        msg = dm_intent()
+                        msg.intent = item[0]
+                        msg.args = item[1]
+                        self.pub_intent_bus.publish(msg)
+
+                        log = 'Waiting for help request action to complete...'
+                        self.logger.log(log)
+                        wait = 0
+                        while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
+                            wait = wait + 1
+                            rospy.sleep(1)
+                        if wait == MAX_WAIT_ACTION_END:
+                            log = 'Action appears not to have completed on time. Help sequence will terminate.'
+                            self.logger.log_warn(log)
+                            break
+                        elif self.accept_reject_help == 'intent_reject':
+                            break
+
+                    self.accept_reject_help = None
+                self.action_end = False
+            self.accept_reject_help = None
 
         # has too much time passed?
         # start a thread that monitors time elapsed and does something
         # when too much time has passed, e.g. +20%
+
+        log = 'State execution thead terminated.'
+        self.logger.log(log)
 
     def swap_s2_to_s1(self):
         self.s1 = copy.deepcopy(self.s2)
@@ -569,7 +683,7 @@ class ADLSequenceModeller():
             self.s2_index = self.s2_index + 1
 
     def save_percepts(self):
-        current_percepts = self.op.get_percepts()
+        current_percepts = self.op.get_object_pool()
         self.s1[-1].percepts = copy.deepcopy(current_percepts)
         if self.s2_active:
             self.s2[-1].percepts = copy.deepcopy(current_percepts)
@@ -702,21 +816,56 @@ class ADLSequenceModeller():
         for adl in adls:
             self.update_markov_chain(adl)
 
-    # ROS Callbacks
+    # ROS callbacks
+
     def ros_callback_sub_pose(self, msg):
         self.current_pose = msg
+        if self.mode == 'train':
+            self.seq[-1].robot_pose = msg
 
     def ros_callback_sub_manual_alignment(self, msg):
         self.logger.log('Alignment message received.')
         if msg.data:
-            self.aligned = True
+            if self.mode == 'train':
+                self.seq[-1].manual_alignment = True
 
     def ros_callback_sub_help_request(self, msg):
-        if msg.intent in valid_intents:
-            log = 'Valid help request message received:' + msg.intent
+        if msg.intent in help_intents and self.mode == 'train':
+            log = 'Valid help request message received: ' + msg.intent
             self.logger.log(log)
 
             self.help_request('train', msg.intent, msg.args)
+        elif msg.intent in accept_reject_intents:
+            log = 'Valid accept/reject message received: ' + msg.intent
+            self.logger.log(log)
+
+            self.accept_reject_help = msg.intent
+
+    def ros_callback_sub_action_end(self, msg):
+        log = 'Received message confirming help action has ended.'
+        self.logger.log(log)
+        self.action_end = True
+
+    # adjust robot pose
+
+    def adjust_robot_pose(self, pose):
+        pose.header.stamp = rospy.Time.now()
+        
+        goal = MoveBaseGoal()
+        goal.target_pose = pose
+
+        self.ros_ac_move_base.send_goal(goal)
+        
+        self.ros_ac_move_base.wait_for_result(rospy.Duration(60))
+
+        action_state = self.ros_ac_move_base.get_state()
+        if action_state == GoalStatus.SUCCEEDED:
+            self.logger.log_great('Action completed successfully.')
+            self.body.move_to_joint_positions({'head_tilt_joint': 0.0})
+            return True
+        else:
+            self.logger.log_warn('Action failed to complete. Ensure path to location is not obstructed.')
+            return False
 
 if __name__ == '__main__':
     ase = ADLSequenceModeller('/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)

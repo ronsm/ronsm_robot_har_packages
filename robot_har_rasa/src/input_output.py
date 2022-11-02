@@ -3,8 +3,11 @@ import pyttsx3
 import speech_recognition as sr
 from playsound import playsound
 import rospy
+import sys
+import actionlib
+from actionlib_msgs.msg import GoalStatus
 
-from tmc_msgs.msg import Voice
+from tmc_msgs.msg import Voice, TalkRequestAction, TalkRequestGoal
 
 from log import Log
 
@@ -26,23 +29,36 @@ class InputOutput(object):
             self.logger.log_warn('Invalid output mode specified.')
             exit(0)
 
+        talk_as = '/talk_request_action'
+        self.ros_as_talk = actionlib.SimpleActionClient(talk_as, TalkRequestAction)
+
+        try:
+            if not self.ros_as_talk.wait_for_server(rospy.Duration(20)):
+                self.logger.log_warn('Talk action server could not be found.')
+        except Exception as e:
+            rospy.logerr(e)
+            sys.exit(1)
+
         self.r = sr.Recognizer()
         sr.Microphone.list_microphone_names()
 
         self.logger.log_great('Ready.')
 
-    def say(self, text):
+    def request(self, text):
         if self.output == 'ROBOT':
             log = 'Sending to HSR TTS: ' + text
             self.logger.log(log)
 
-            msg = Voice()
-            msg.language = 1
-            msg.interrupting = True
-            msg.queueing = True
-            msg.sentence = text
+            goal = TalkRequestGoal()
+            goal.data.language = Voice.kEnglish
+            goal.data.sentence = text
 
-            self.tts_pub.publish(msg)
+            self.ros_as_talk.send_goal(goal)
+
+            self.ros_as_talk.wait_for_result(timeout=rospy.Duration(40))
+
+            rospy.sleep(1)
+
         elif self.output == 'LOCAL':
             self.tts_engine.say(text)
             self.tts_engine.runAndWait()

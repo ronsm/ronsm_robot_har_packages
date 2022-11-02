@@ -4,6 +4,16 @@ rules:
 
   # Custom Actions
 
+- rule: Accept help request
+  steps:
+  - intent: intent_accept
+  - action: action_simple_ros_command
+
+- rule: Reject help request
+  steps:
+  - intent: intent_reject
+  - action: action_simple_ros_command
+
 - rule: Start learning ADL
   steps:
   - intent: intent_start_teaching_adl

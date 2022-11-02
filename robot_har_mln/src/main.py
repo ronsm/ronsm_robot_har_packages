@@ -32,6 +32,7 @@ from ronsm_messages.msg import har_reset
 from ronsm_messages.msg import har_evidence_list
 from ronsm_messages.msg import har_arm_basic
 from ronsm_messages.msg import har_predictions
+from ronsm_messages.msg import dm_intent
 import ronsm_messages.msg
 
 etypes = ['event']
@@ -104,6 +105,7 @@ class Main():
         self.current_evidence = None # used by ASM
         self.room_e_history = []
         self.pred_e_history = []
+        self.pred_a_history = []
         self.last_add = None
         self.s2_active = False
         self.s1_predictions_in_segment = 0
@@ -259,6 +261,7 @@ class Main():
         self.ps = {}
         self.ps['events'] = []
         self.ps['rooms'] = []
+        self.ps['after'] = []
         
     # ROS Loop 
 
@@ -429,6 +432,8 @@ class Main():
 
         for event in self.ps['events']:
             file.write(event + '\n')
+        for after in self.ps['after']:
+            file.write(after + '\n')
         sample_label = 'class(S,' + label + ')'
         file.write(sample_label + '\n')
         file.write('---\n')
@@ -444,25 +449,31 @@ class Main():
         self.asm.label_sequence('train', label)
 
         segment_e = self.segment_save_e
-
         segment_e = set(segment_e)
         segment_e = list(segment_e)
 
-        self.save_evidence_query(segment_e, label)
+        segment_a = self.segment_save_a
+        segment_a = set(segment_a)
+        segment_a = list(segment_a)
+
+        self.save_evidence_query(segment_e, segment_a, label)
 
         self.label_save = None
         self.segment_save_e = None
+        self.segment_save_a = None
 
         self.train_mlns()
 
         self.save_mlns()
 
-    def save_evidence_query(self, segment_e, label):
+    def save_evidence_query(self, segment_e, segment_a, label):
         path_s = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.txt'
         file = open(path_s, 'a')
 
         for event in segment_e:
             file.write(event + '\n')
+        for after in segment_a:
+            file.write(after + '\n')
         sample_label = 'class(S,' + label + ')'
         file.write(sample_label + '\n')
         file.write('---\n')
@@ -489,6 +500,7 @@ class Main():
         # Segmentation
         self.room_e_history = []
         self.pred_e_history = []
+        self.pred_a_history = []
         self.last_add = None
 
         # Loads
@@ -600,6 +612,11 @@ class Main():
     def add(self, evidence, etype, room):
         resp = 'OK. Attempting to add: (' + etype + ',' + evidence + ')'
 
+        if evidence == 'Presence':
+            log = 'Not modelling using presence events!'
+            self.logger.log_warn(log)
+            return
+
         if self.mode == 'train':
             self.add_pred(evidence, etype, room)
             resp = 'OK. Added: (' + etype + ',' + evidence + ')'
@@ -639,17 +656,25 @@ class Main():
                 self.s1_db_s[persistent] = 0.0
                 self.s2_db_s[persistent] = 0.0
 
-        if self.mode == 'predict':
+        if self.mode == 'train':
+            if len(self.ps['events']) > 1:
+                previous = self.ps['events'][-2]
+                previous = previous.split(',')
+                previous = previous[1]
+                previous = previous.rstrip(')')
+                pred = 'after(' + previous + ',' + evidence + ')'
+                self.ps['after'].append(pred)
+        elif self.mode == 'predict':
             if len(self.pred_e_history) > 1:
                 previous = self.pred_e_history[-2]
                 previous = previous.split(',')
                 previous = previous[1]
                 previous = previous.rstrip(')')
                 pred = 'after(' + previous+ ',' + evidence + ')'
-                print(pred)
                 self.s1_db_s[pred] = 1.0
                 if self.s2_active:
                     self.s2_db_s[pred] = 1.0
+                self.pred_a_history.append(pred)
 
     def valid_pred(self, evidence, etype):
         if etype in etypes:
@@ -805,20 +830,33 @@ class Main():
 
     def s1_clear_pred_history(self):
         self.segment_save_e = copy.deepcopy(self.pred_e_history)
+        self.segment_save_a = copy.deepcopy(self.pred_a_history)
         self.segment_save_e.pop()
 
         new_room = self.room_e_history[-1]
         new_pred = self.pred_e_history[-1]
+        if len(self.pred_a_history) > 0:
+            new_after = self.pred_a_history[-1]
+
         for i in range(0, len(self.pred_e_history) - 1):
             if not self.is_persistent(self.pred_e_history[i]):
                 self.s1_db_s[self.pred_e_history[i]] = 0.0
         self.s1_db_s[new_pred] = 1.0
+
+        if len(self.pred_a_history) > 0:
+            for i in range(0, len(self.pred_a_history) - 1):
+                self.s1_db_s[self.pred_a_history[i]] = 0.0
+            self.s1_db_s[new_after]
         
         self.room_e_history = []
         self.room_e_history.append(new_room)
 
         self.pred_e_history = []
         self.pred_e_history.append(new_pred)
+
+        self.pred_a_history = []
+        if len(self.pred_a_history) > 0:
+            self.pred_a_history.append(new_after)    
 
         self.s1_predictions_in_segment = 0
 
@@ -827,6 +865,9 @@ class Main():
     def s2_clear_pred_history(self):
         for i in range(0, len(self.pred_e_history)):
             self.s2_db_s[self.pred_e_history[i]] = 0.0
+
+        for i in range(0, len(self.pred_a_history)):
+            self.s2_db_s[self.pred_a_history[i]] = 0.0
 
         self.s2_predictions_in_segment = 0
 
