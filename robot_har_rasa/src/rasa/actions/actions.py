@@ -25,7 +25,7 @@ class ActionSimpleROSCommand(Action):
 
         if intent == 'intent_pick_up_object':
             args = tracker.get_latest_entity_values(entity_type='object')
-        elif intent == 'intent_go_toom_room':
+        elif intent == 'intent_go_to_room':
             args = tracker.get_latest_entity_values(entity_type='room')
         else:
             args = []

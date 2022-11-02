@@ -107,7 +107,7 @@ class MarkerAlign():
         for i in range(0, 20):
             marker = False
             marker_tf = None
-            if self.tfBuffer.can_transform('map', self.target_marker, rospy.Time(), timeout=rospy.Duration(10.0)):
+            if self.tf2_buffer.can_transform('map', self.target_marker, rospy.Time(), timeout=rospy.Duration(10.0)):
                 marker = True
                 try:
                     marker_tf = self.tf1.lookupTransform('map', self.target_marker, rospy.Time())
