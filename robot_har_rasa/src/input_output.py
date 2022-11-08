@@ -57,14 +57,10 @@ class InputOutput(object):
 
             self.ros_as_talk.wait_for_result(timeout=rospy.Duration(40))
 
-            rospy.sleep(1)
-
         elif self.output == 'LOCAL':
             self.tts_engine.say(text)
             self.tts_engine.runAndWait()
             
-        rospy.sleep(5)
-
     def listen(self):
         with sr.Microphone() as source:
             log = 'Adjusting for ambient noise...'

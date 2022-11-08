@@ -21,6 +21,7 @@ from soupsieve import match
 import rospy
 import threading
 from regex import D
+import actionlib
 
 from adl_helper import ADLHelper
 from log import Log
@@ -33,7 +34,7 @@ from geometry_msgs.msg import PoseStamped, Point, Quaternion
 from actionlib_msgs.msg import GoalStatus
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
-help_intents = ['intent_pick_up_object', 'intent_go_to_room', 'intent_hand_over']
+help_intents = ['intent_pick_up_object', 'intent_go_to_room', 'intent_hand_over', 'intent_align_workspace']
 accept_reject_intents = ['intent_accept', 'intent_reject', 'intent_wait']
 
 @dataclass
@@ -110,6 +111,11 @@ class ADLSequenceModeller():
         self.pub_adjust = rospy.Publisher('/robot_har_help_service/marker_align/adjust', PoseStamped, queue_size=10)
         self.pub_offer_help = rospy.Publisher('/robot_har_mln/asm/offer_help', dm_intent, queue_size=10)
         self.pub_intent_bus = rospy.Publisher('/robot_har_rasa_core/intent_bus', dm_intent, queue_size=10)
+        self.pub_workspace_pose = rospy.Publisher('/robot_har_help_service/move_to_room/workspace_pose', String, queue_size=10)
+
+        # ROS AS Clients
+        self.ros_ac_move_base = actionlib.SimpleActionClient('/move_base/move', MoveBaseAction)
+        self.ros_ac_move_base.wait_for_server()
 
         # Markov Chains
         self.markov_chains = {}
@@ -542,20 +548,30 @@ class ADLSequenceModeller():
             if self.state_current_s1[0].state.manual_alignment:
                 log = 'Robot pose may need to be adjusted.'
                 self.logger.log(log)
-                wait = 0
-                while(self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
-                    wait = wait + 1
-                    rospy.sleep(1)
-                if wait == MAX_WAIT_ACCEPT_REJECT:
-                    log = 'No valid response to help request received in time.'
-                    self.logger.log_warn(log)
 
-                if self.accept_reject_help == 'intent_accept':
-                    self.adjust_robot_pose(self.state_current_s1[0].state.robot_pose)
-                    log = 'Robot pose is being adjusted.'
-                    self.logger.log(log)
-                else:
-                    return
+                msg = dm_intent()
+                msg.intent = 'intent_align_workspace'
+                msg.args = []
+                # self.pub_offer_help.publish(msg)
+
+                # wait = 0
+                # while(self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
+                #     self.logger.log('Waiting for response...')
+                #     wait = wait + 1
+                #     rospy.sleep(1)
+                # if wait == MAX_WAIT_ACCEPT_REJECT:
+                #     log = 'No valid response to help request received in time.'
+                #     self.logger.log_warn(log)
+
+                # if self.accept_reject_help == 'intent_accept':
+                #     self.adjust_robot_pose(self.state_current_s1[0].state.robot_pose)
+                #     log = 'Robot pose is being adjusted.'
+                #     self.logger.log(log)
+                # else:
+                #     return
+                self.adjust_robot_pose(self.state_current_s1[0].state.robot_pose)
+                log = 'Robot pose is being adjusted.'
+                self.logger.log(log)
             else:
                 log = 'Robot pose does not need to be adjusted.'
                 self.logger.log(log)
@@ -576,6 +592,7 @@ class ADLSequenceModeller():
 
         locked_path = -1
         for i in range(0, len(potential_helps)):
+            print(i)
             item = potential_helps[i][0]
 
             msg = dm_intent()
@@ -585,6 +602,7 @@ class ADLSequenceModeller():
 
             wait = 0
             while (self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
+                self.logger.log('Waiting for response...')
                 wait = wait + 1
                 rospy.sleep(1)
             if wait == MAX_WAIT_ACCEPT_REJECT:
@@ -597,8 +615,6 @@ class ADLSequenceModeller():
             if locked_path != -1:
                 break
 
-        print(locked_path)
-        print(self.accept_reject_help)
         self.accept_reject_help = None
         
         if locked_path != -1:
@@ -613,6 +629,7 @@ class ADLSequenceModeller():
                     self.logger.log(log)
                     wait = 0
                     while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
+                        self.logger.log('Waiting for response...')
                         wait = wait + 1
                         rospy.sleep(1)
                     if wait == MAX_WAIT_ACTION_END:
@@ -627,6 +644,7 @@ class ADLSequenceModeller():
 
                     wait = 0
                     while (self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
+                        self.logger.log('Waiting for response...')
                         wait = wait + 1
                         rospy.sleep(1)
                     if wait == MAX_WAIT_ACCEPT_REJECT:
@@ -643,6 +661,7 @@ class ADLSequenceModeller():
                         self.logger.log(log)
                         wait = 0
                         while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
+                            self.logger.log('Waiting for response...')
                             wait = wait + 1
                             rospy.sleep(1)
                         if wait == MAX_WAIT_ACTION_END:
@@ -854,6 +873,9 @@ class ADLSequenceModeller():
         goal = MoveBaseGoal()
         goal.target_pose = pose
 
+        goal.target_pose.pose.position.x = 0.182
+        goal.target_pose.pose.position.y = 1.159
+
         self.ros_ac_move_base.send_goal(goal)
         
         self.ros_ac_move_base.wait_for_result(rospy.Duration(60))
@@ -861,7 +883,8 @@ class ADLSequenceModeller():
         action_state = self.ros_ac_move_base.get_state()
         if action_state == GoalStatus.SUCCEEDED:
             self.logger.log_great('Action completed successfully.')
-            self.body.move_to_joint_positions({'head_tilt_joint': 0.0})
+            msg = String()
+            self.pub_workspace_pose.publish(msg)
             return True
         else:
             self.logger.log_warn('Action failed to complete. Ensure path to location is not obstructed.')

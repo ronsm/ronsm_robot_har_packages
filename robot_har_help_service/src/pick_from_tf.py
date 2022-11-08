@@ -57,7 +57,7 @@ class PickFromTF():
             try:
                 self.logger.log('Trying to grasp...')
 
-                self.body.move_to_neutral()
+                # self.body.move_to_neutral()
 
                 self.body.looking_hand_constraint = True
                 self.body.move_end_effector_pose(OBJECT_TO_HAND, OBJECT_TF)

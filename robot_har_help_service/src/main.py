@@ -51,7 +51,7 @@ class Main():
         self.speak = Speak()
         self.object_to_transform = ObjectToTF(self.speak)
         self.pick_from_tf = PickFromTF(self.speak, self.base, self.body, self.grip)
-        self.move_to_room = MoveToRoom(self.speak)
+        self.move_to_room = MoveToRoom(self.body)
         self.marker_align = MarkerAlign(self.speak, self.base, self.body)
         self.hand_over = HandOver(self.speak, self.body, self.grip)
 

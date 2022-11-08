@@ -23,23 +23,24 @@ RALT_MAP = {
     'kitchen' : (0.086, 0.519, 1.2),
     'dining' : (1.116, -1.593, 0.7),
     'lounge' : (1.840, -2.359, 4.9),
-    'bedroom' : (0.012, -3.513, 0.5),
+    'bedroom' : (-1.87, -3.97, 4.8),
     'bathroom' : (-2.467, -1.727, 0)
 }
 
 class MoveToRoom():
-    def __init__(self, speak):
+    def __init__(self, body):
         # set up logger
         self.id = 'move_to_room'
         self.logger = Log(self.id)
 
         # set up ROS
-        self.ros_sub_move_to_room = rospy.Subscriber('/robot_har_help_service/move_to_room/request', String, callback=self.ros_callback_mvoe_to_room)
+        self.ros_sub_move_to_room = rospy.Subscriber('/robot_har_help_service/move_to_room/request', String, callback=self.ros_callback_move_to_room)
+        self.ros_sub_workspace_pose = rospy.Subscriber('/robot_har_help_service/move_to_room/workspace_pose', String, callback=self.ros_callback_workspace_pose)
         self.ros_ac_move_base = actionlib.SimpleActionClient('/move_base/move', MoveBaseAction)
         self.ros_ac_move_base.wait_for_server()
 
         # set up HSR
-        self.speak = speak
+        self.body = body
 
         # instance variables
         self.current_room = None
@@ -86,7 +87,10 @@ class MoveToRoom():
 
     # callbacks
 
-    def ros_callback_mvoe_to_room(self, msg):
+    def ros_callback_move_to_room(self, msg):
         room = msg.data
         room = room.lower()
         self.request(room)
+
+    def ros_callback_workspace_pose(self, msg):
+        self.body.move_to_joint_positions({'head_tilt_joint': 0.0, 'arm_lift_joint' : 0.25})

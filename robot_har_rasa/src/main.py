@@ -72,6 +72,9 @@ class Main():
         elif intent == 'intent_align_workspace':
             say = 'Should I move closer to the workspace?'
             self.io.request(say)
+        elif intent == 'intent_hand_over':
+            say = 'Can I pass you the object?'
+            self.io.request(say)
         else:
             log = 'No service handler available for intent: ' + intent
             self.logger.log_warn(log)
@@ -80,7 +83,9 @@ class Main():
         if INPUT == 'KEYBOARD':
             utterance = input('utterance: ')
         elif INPUT == 'MICROPHONE':
-            utterance = self.io.listen() # enable this to get input from microphone instead of keyboard
+            # utterance = self.io.listen() # enable this to get input from microphone instead of keyboard
+            utterance = 'yes please'
+            rospy.sleep(3)
         self.send_to_rasa(utterance)
 
     # RASA interaction
