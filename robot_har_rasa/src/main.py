@@ -11,14 +11,12 @@ from log import Log
 from input_output import InputOutput
 
 # standard messages
-# none
+from std_msgs.msg import String
 
 # custom messages
 from ronsm_messages.msg import dm_intent
 
 # constants and parameters
-# none
-
 RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 OUTPUT = 'ROBOT'
 INPUT = 'MICROPHONE'
@@ -35,6 +33,8 @@ class Main():
         self.rel_path = rospack.get_path('robot_har_rasa')
 
         self.ros_sub_offer_help = rospy.Subscriber('/robot_har_mln/asm/offer_help', dm_intent, callback=self.ros_callback_offer_help)
+
+        self.ros_sub_text = rospy.Subscriber('/robot_hsr_asr/text', String, callback=self.ros_callback_text)
 
         rospy.init_node('robot_har_rasa')
 
@@ -110,6 +110,9 @@ class Main():
 
     def ros_callback_offer_help(self, msg):
         self.offer_help(msg.intent, msg.args)
+
+    def ros_callback_text(self, msg):
+        self.send_to_rasa(msg.data)
 
 if __name__ == '__main__':
     m = Main()
