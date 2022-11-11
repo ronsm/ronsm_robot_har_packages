@@ -135,6 +135,7 @@ class ADLSequenceModeller():
 
         self.accept_reject_help = None
         self.action_end = False
+        self.action_success = False
 
         # Segments (managed by main)
         self.s2_active = False
@@ -853,17 +854,44 @@ class ADLSequenceModeller():
             log = 'Valid help request message received: ' + msg.intent
             self.logger.log(log)
 
-            self.help_request('train', msg.intent, msg.args)
+            x = threading.Thread(target=self.ros_callback_sub_help_request_thread, args=())
+            x.start()
         elif msg.intent in accept_reject_intents:
             log = 'Valid accept/reject message received: ' + msg.intent
             self.logger.log(log)
 
             self.accept_reject_help = msg.intent
 
+    def ros_callback_sub_help_request_thread(self):
+        wait = 0
+        while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
+            self.logger.log('Waiting for help request to be completed...')
+            wait = wait + 1
+            rospy.sleep(1)
+        if wait == MAX_WAIT_ACTION_END:
+            log = 'Action appears not to have completed on time. Help sequence will terminate.'
+            self.logger.log_warn(log)
+
+        if self.action_end:
+            if self.action_success:
+                log = 'Help action completed successfully, action will be added to model.'
+                self.logger.log_great(log)
+                self.help_request('train', msg.intent, msg.args)
+            else:
+                log = 'Help action failed, action will not be added to model.'
+                self.logger.log_warn(log)
+
+        self.action_end = False
+        self.action_success = False
+
     def ros_callback_sub_action_end(self, msg):
         log = 'Received message confirming help action has ended.'
         self.logger.log(log)
         self.action_end = True
+        if msg.data == 'success':
+            self.action_success = True
+        else:
+            self.action_success = False
 
     # adjust robot pose
 

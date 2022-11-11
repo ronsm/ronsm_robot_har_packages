@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # standard libraries
 import rospy
 from threading import Thread
-from Queue import Queue
+from queue import Queue
 import speech_recognition as sr
 from playsound import playsound
 
