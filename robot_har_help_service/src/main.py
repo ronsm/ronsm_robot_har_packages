@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 # standard libraries
-from pick_from_tf import PickFromTF
 import rospy
 from hsrb_interface import Robot, exceptions
 
