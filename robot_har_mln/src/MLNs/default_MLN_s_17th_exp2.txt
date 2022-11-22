@@ -1,6 +1,3 @@
-
-
-
 // predicate declarations
 after(event,event)
 class(a,activity?)

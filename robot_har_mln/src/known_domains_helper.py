@@ -13,6 +13,8 @@ class KnownDomainsHelper():
         self.load_dbs()
         self.count()
 
+        self.logger.log_great('Ready.')
+
     def load_dbs(self):
         path = self.rel_path + '/src/DBs/' + 'global' + '_DB_s.txt'
 

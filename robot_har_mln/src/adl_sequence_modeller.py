@@ -115,7 +115,7 @@ class ADLSequenceModeller():
 
         # ROS AS Clients
         self.ros_ac_move_base = actionlib.SimpleActionClient('/move_base/move', MoveBaseAction)
-        self.ros_ac_move_base.wait_for_server()
+        # self.ros_ac_move_base.wait_for_server()
 
         # Markov Chains
         self.markov_chains = {}

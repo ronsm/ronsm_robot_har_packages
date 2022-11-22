@@ -283,7 +283,7 @@ class Main():
                 if self.predict_next_cycle:
                     self.decay_and_reason() # includes reasoning
                     prediction = self.get_prevailing_prediction()
-                    self.asm.action('predict', 'human', self.current_evidence, prediction=prediction)
+                    # self.asm.action('predict', 'human', self.current_evidence, prediction=prediction)
                     self.ros_pub_predictions(prediction)
                     self.arm.evaluate_rules(self.s1_predictions_s, self.room_e_history[-1])
                     self.predict_next_cycle = False
@@ -787,7 +787,7 @@ class Main():
 
             if self.s2_predictions_in_segment > MIN_SEGMENT_DEPTH: # OR MIN_SEGMENT_DEPTH - 1
                 s1_consistent_s = self.tdch.is_consistent(self.s1_prediction_s_before_s2, self.pred_e_history[-1])
-                s2_consistent_s = self.tdch.is_consistent(self.s2_predictions_s[-1][0], self.pred_e_history[-1])
+                s2_consistent_s = self.tdch.is_consistent(self.s2_predictions_s[-2][0], self.pred_e_history[-1])
 
                 if self.s1_predictions_s[-1][0] == self.s2_predictions_s[-1][0]:
                     agree = True
