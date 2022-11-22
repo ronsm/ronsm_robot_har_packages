@@ -5,3 +5,4 @@
 *.pyc
 robot_har_mln/src/MCs/*.png
 !status.pickle
+!tone_beep.wav
