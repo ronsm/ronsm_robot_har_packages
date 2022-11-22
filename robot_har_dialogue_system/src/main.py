@@ -3,7 +3,6 @@ from aiohttp import request
 import rospy
 import rospkg
 import sys
-from rasa.nlu.model import Interpreter
 
 from dialogue_manager import DialogueManager
 from label_linker import LabelLinker
