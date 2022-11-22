@@ -2,7 +2,8 @@
 *.p
 *.pickle
 *.wav
-*.pyc
+__pycache__/
+*.py[cod]
 robot_har_mln/src/MCs/*.png
 !default_MLN_h.mln
 !default_MLN_s.mln
