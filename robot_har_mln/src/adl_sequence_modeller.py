@@ -13,7 +13,6 @@ from typing import Optional, List, Set
 import copy
 from lockfile import locked
 import numpy as np
-from graph_tool.all import *
 import networkx as nx
 import matplotlib.pyplot as plt
 from numpy import False_
