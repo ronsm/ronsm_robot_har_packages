@@ -5,6 +5,7 @@ from operator import index
 import pickle
 import collections
 import pprint
+import itertools
 import os
 from dataclasses import dataclass
 from os.path import exists
@@ -70,6 +71,7 @@ class ChainState:
     help: Optional[HelpRequest]
     count: int
 
+
 @dataclass
 class CandidateState:
     adl: str
@@ -129,6 +131,9 @@ class ADLSequenceModeller():
 
         self.state_estimate_success_s1 = False
         self.state_estimate_success_s2 = False
+
+        self.last_valid_state_s1 = None
+        self.last_valid_state_s2 = None
 
         self.locked = False
 
@@ -275,10 +280,11 @@ class ADLSequenceModeller():
         self.s1_index = 0
         self.start_time = perf_counter()
         self.prev_time = 0.0
-        self.actions = ['START']
+        self.actions_s1 = ['START']
+        self.actions_s2 = ['START']
         time_object = Times(0.0, 0.0)
         entry = ChainState(self.s1_index, 'START', 'START', copy.deepcopy(
-            self.actions), [time_object], None, None, self.current_pose, None, 1)
+            self.actions_s1), [time_object], None, None, self.current_pose, None, 1)
         self.s1.append(entry)
         self.s1_index = self.s1_index + 1
 
@@ -287,9 +293,9 @@ class ADLSequenceModeller():
         elapsed = time - self.prev_time
         time_object = Times("{:.2f}".format(
             time), "{:.2f}".format(elapsed))
-        self.actions.append(action)
+        self.actions_s1.append(action)
         entry = ChainState(self.s1_index, agent, action, copy.deepcopy(
-            self.actions), [time_object], None, None, self.current_pose, None, 1)
+            self.actions_s1), [time_object], None, None, self.current_pose, None, 1)
         self.s1.append(entry)
         self.prev_time = time
         self.s1_index = self.s1_index + 1
@@ -299,9 +305,9 @@ class ADLSequenceModeller():
             elapsed = time - self.prev_time
             time_object = Times("{:.2f}".format(
                 time), "{:.2f}".format(elapsed))
-            self.actions.append(action)
+            self.actions_s2.append(action)
             entry = ChainState(self.s2_index, agent, action, copy.deepcopy(
-                self.actions), [time_object], None, None, self.current_pose, None, 1)
+                self.actions_s2), [time_object], None, None, self.current_pose, None, 1)
             self.s2.append(entry)
             self.prev_time = time
             self.s2_index = self.s2_index + 1
@@ -309,12 +315,24 @@ class ADLSequenceModeller():
         self.predict_step(prediction)
 
     def predict_step(self, prediction=None):
-        if prediction == None:
-            self.estimate_state_unbounded()
-        else:
-            self.estimate_state_bounded(prediction)
+        self.estimate_state_unbounded()
+        # if self.s2_active:
+        #     if not self.state_estimate_success_s2:
+        #         self.failsafe_state_estimate_s2()
         self.next_states()
         self.execute_state()
+        log = 'S1' + str(self.s1[-1].state)
+        self.logger.log(log)
+        if self.s2_active:
+            log = 'S2' + str(self.s2[-1].state)
+            self.logger.log(log)
+
+    def simple_match(self, compare):
+        for adl, chain in self.markov_chains_states.items():
+            for entry in chain:
+                if collections.Counter(compare) == collections.Counter(entry.state):
+                    return True, adl, entry
+        return False, None, None
 
     def estimate_state_unbounded(self):
         # s1
@@ -325,11 +343,31 @@ class ADLSequenceModeller():
                 for entry in chain:
                     if collections.Counter(self.s1[-1].state) == collections.Counter(entry.state):
                         if self.s1[-1].state == entry.state:
-                            s1_candidates.append(
-                                (CandidateState(adl, entry, 'exact', {})))
+                            s1_candidates.append((CandidateState(adl, entry, 'exact', {})))
+                            self.last_valid_state_s1 = entry.state
                         else:
-                            s1_candidates.append(
-                                (CandidateState(adl, entry, 'approx', {})))
+                            s1_candidates.append((CandidateState(adl, entry, 'approx', {})))
+                            self.last_valid_state_s1 = entry.state
+        
+            if not self.state_estimate_success_s1:
+                if self.last_valid_state_s1 != None:
+                    difference = self.s1[-1].state[len(self.last_valid_state_s1):]
+                    subsets = []
+                    for L in range(len(difference) + 1):
+                        for subset in itertools.combinations(difference, L):
+                            subset = list(subset)
+                            subsets.append(subset)
+                    matches = []
+                    subsets.sort(key=len, reverse=True)
+                    for subset in subsets:
+                        compare = self.last_valid_state_s1 + subset
+                        match, adl, entry = self.simple_match(compare)
+                        if match:
+                            matches.append((match, adl, entry))
+                    
+                    if len(matches) > 0:
+                        s1_candidates.append((CandidateState(matches[0][1], matches[0][2], 'approx', {})))
+                        self.last_valid_state_s1 = entry.state
 
         if len(s1_candidates) > 0:
             if VERBOSE:
@@ -353,11 +391,31 @@ class ADLSequenceModeller():
                     for entry in chain:
                         if collections.Counter(self.s2[-1].state) == collections.Counter(entry.state):
                             if self.s2[-1].state == entry.state:
-                                s2_candidates.append(
-                                    (CandidateState(adl, entry, 'exact', {})))
+                                s2_candidates.append((CandidateState(adl, entry, 'exact', {})))
+                                self.last_valid_state_s2 = entry.state
                             else:
-                                s2_candidates.append(
-                                    (CandidateState(adl, entry, 'approx', {})))
+                                s2_candidates.append((CandidateState(adl, entry, 'approx', {})))
+                                self.last_valid_state_s2 = entry.state
+                
+                if not self.state_estimate_success_s2:
+                    if self.last_valid_state_s2 != None:
+                        difference = self.s2[-1].state[len(self.last_valid_state_s2):]
+                        subsets = []
+                        for L in range(len(difference) + 1):
+                            for subset in itertools.combinations(difference, L):
+                                subset = list(subset)
+                                subsets.append(subset)
+                        matches = []
+                        subsets.sort(key=len, reverse=True)
+                        for subset in subsets:
+                            compare = self.last_valid_state_s2 + subset
+                            match, adl, entry = self.simple_match(compare)
+                            if match:
+                                matches.append((match, adl, entry))
+                        
+                        if len(matches) > 0:
+                            s2_candidates.append((CandidateState(matches[0][1], matches[0][2], 'approx', {})))
+                            self.last_valid_state_s2 = entry.state
 
             if len(s2_candidates) > 0:
                 if VERBOSE:
@@ -369,62 +427,6 @@ class ADLSequenceModeller():
             else:
                 if VERBOSE:
                     self.logger.log_mini_header('Estimated State (S2) (Unbounded)')
-                    log = 'Unable to find any matching candidates.'
-                    self.logger.log_warn(log)
-                self.state_estimate_success_s2 = False
-
-    def estimate_state_bounded(self, prediction):
-        # s1
-        s1_candidates = []
-        if len(self.s1) > 0:
-            chain = self.markov_chains_states[prediction]
-            for entry in chain:
-                if collections.Counter(self.s1[-1].state) == collections.Counter(entry.state):
-                    if self.s1[-1].state == entry.state:
-                        s1_candidates.append(
-                            (CandidateState(prediction, entry, 'exact', {})))
-                    else:
-                        s1_candidates.append(
-                            (CandidateState(prediction, entry, 'approx', {})))
-
-        if len(s1_candidates) > 0:
-            if VERBOSE:
-                self.logger.log_mini_header('Estimated State (S1) (Bounded)')
-                log = str(s1_candidates)
-                self.logger.log(log)
-            self.select_state(s1_candidates, segment=1)
-            self.state_estimate_success_s1 = True
-        else:
-            if VERBOSE:
-                self.logger.log_mini_header('Estimated State (S1) (Bounded)')
-                log = 'Unable to find any matching candidates.'
-                self.logger.log_warn(log)
-            self.state_estimate_success_s1 = False
-
-        # s2
-        if self.s2_active:
-            s2_candidates = []
-            if len(self.s2) > 0:
-                chain = self.markov_chains_states[prediction]
-                for entry in chain:
-                    if collections.Counter(self.s2[-1].state) == collections.Counter(entry.state):
-                        if self.s2[-1].state == entry.state:
-                            s2_candidates.append(
-                                (CandidateState(prediction, entry, 'exact', {})))
-                        else:
-                            s2_candidates.append(
-                                (CandidateState(prediction, entry, 'approx', {})))
-
-            if len(s2_candidates) > 0:
-                if VERBOSE:
-                    self.logger.log_mini_header('Estimated State (S2) (Bounded)')
-                    log = str(s2_candidates)
-                    self.logger.log(log)
-                self.select_state(s2_candidates, segment=2)
-                self.state_estimate_success_s2 = True
-            else:
-                if VERBOSE:
-                    self.logger.log_mini_header('Estimated State (S2) (Bounded)')
                     log = 'Unable to find any matching candidates.'
                     self.logger.log_warn(log)
                 self.state_estimate_success_s2 = False

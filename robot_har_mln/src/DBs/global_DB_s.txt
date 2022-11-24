@@ -5,3 +5,8 @@ after(CutleryDrawer,Tap)
 after(Tap,Fridge)
 class(S,Cooking)
 ---
+involves(S,MiscCabinet)
+involves(S,Oven)
+after(MiscCabinet,Oven)
+class(S,Cleaning)
+---
