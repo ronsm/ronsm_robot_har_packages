@@ -367,7 +367,8 @@ class ADLSequenceModeller():
                     
                     if len(matches) > 0:
                         s1_candidates.append((CandidateState(matches[0][1], matches[0][2], 'approx', {})))
-                        self.last_valid_state_s1 = entry.state
+                        self.last_valid_state_s1 = matches[0][2].state
+                        self.s1[-1].state = matches[0][2].state
 
         if len(s1_candidates) > 0:
             if VERBOSE:
@@ -415,7 +416,8 @@ class ADLSequenceModeller():
                         
                         if len(matches) > 0:
                             s2_candidates.append((CandidateState(matches[0][1], matches[0][2], 'approx', {})))
-                            self.last_valid_state_s2 = entry.state
+                            self.last_valid_state_s2 = matches[0][2].state
+                            self.s2[-1].state = matches[0][2].state
 
             if len(s2_candidates) > 0:
                 if VERBOSE:
