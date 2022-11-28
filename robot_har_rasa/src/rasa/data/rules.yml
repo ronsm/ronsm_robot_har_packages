@@ -14,6 +14,11 @@ rules:
   - intent: nlu_fallback
   - action: utter_please_rephrase
 
+- rule: Reset the system
+  steps:
+  - intent: intent_reset
+  - action: action_simple_ros_command
+
 - rule: Accept help request
   steps:
   - intent: intent_accept

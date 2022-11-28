@@ -18,6 +18,13 @@ nlu:
     - eat my shorts
     - just leave me alone
 
+# reset
+- intent: intent_reset
+  examples: |
+    - reset
+    - please reset
+    - lets start again
+
 # accpt/reject
 - intent: intent_accept
   examples: |
