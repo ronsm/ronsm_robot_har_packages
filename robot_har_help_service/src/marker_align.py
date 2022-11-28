@@ -96,12 +96,12 @@ class MarkerAlign():
 
         if not self.marker_recognition_enabled:
             return False
+        
+        self.body.move_to_neutral()
 
         self.speak.request('I will now try to align with your marker.')
 
-        # self.body.move_to_joint_positions({'arm_flex_joint': -2.5, 'wrist_flex_joint': 1.2})
         self.body.move_to_joint_positions({'head_tilt_joint': 0.0})
-        # self.body.move_to_joint_positions({'arm_lift_joint': 0.45})
         rospy.sleep(0.5)
 
         for i in range(0, 20):

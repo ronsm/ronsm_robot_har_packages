@@ -10,6 +10,7 @@ from speak import Speak
 from object_to_tf import ObjectToTF
 from pick_from_tf import PickFromTF
 from move_to_room import MoveToRoom
+from move_to_pose import MoveToPose
 from marker_align import MarkerAlign
 from hand_over import HandOver
 
@@ -52,6 +53,7 @@ class Main():
         self.object_to_transform = ObjectToTF(self.speak)
         self.pick_from_tf = PickFromTF(self.speak, self.base, self.body, self.grip)
         self.move_to_room = MoveToRoom(self.body)
+        self.move_to_pose = MoveToPose(self.body)
         self.marker_align = MarkerAlign(self.speak, self.base, self.body)
         self.hand_over = HandOver(self.speak, self.body, self.grip)
 
@@ -66,12 +68,12 @@ class Main():
 
     # core logic
 
-    def process_intent(self, intent, args):
+    def process_intent(self, intent, args, pose):
         if not self.global_lock:
             log = 'Processing intent: ' + intent
             self.logger.log(log)
 
-            # should match those in robot_har_rasa 
+            # should match those in robot_har_rasa (mostly)
             if intent == 'intent_pick_up_object':
                 if len(args) == 1:
                     self.intent_pick_up_object(target=args[0])
@@ -82,9 +84,14 @@ class Main():
                     self.intent_go_to_room(target=args[0])
                 else:
                     self.log_intent_missing_args(intent)
+            elif intent == 'intent_move_to_pose':
+                if len(args) == 0:
+                    self.intent_move_to_pose(target=pose)
+                else:
+                    self.log_intent_missing_args(intent)
             elif intent == 'intent_hand_over':
                 if len(args) == 0:
-                    self.hand_over.request()
+                    self.intent_hand_over()
                 else:
                     self.log_intent_missing_args(intent)
             elif intent == 'intent_register_marker':
@@ -110,7 +117,7 @@ class Main():
     # callbacks
 
     def ros_callback_intent_bus(self, msg):
-        self.process_intent(msg.intent, msg.args)
+        self.process_intent(msg.intent, msg.args, msg.pose)
 
     def ros_callback_global_lock(self, msg):
         self.global_lock = msg.data
@@ -149,6 +156,30 @@ class Main():
             return
 
         say = 'Ok, I am now in the ' + target
+        self.speak.request(say)
+        self.log_action_success()
+
+    def intent_move_to_pose(self, target):
+        success = self.move_to_pose.request(target)
+        if not success:
+            say = 'Sorry, I was unable to reach that position.'
+            self.speak.request(say)
+            self.log_action_failure()
+            return
+
+        say = 'Ok, I have moved to the next position.'
+        self.speak.request(say)
+        self.log_action_success()
+
+    def intent_hand_over(self):
+        success = self.hand_over.request()
+        if not success:
+            say = 'Sorry, I was not able to hand over the object.'
+            self.speak.request(say)
+            self.log_action_failure()
+            return
+    
+        say = 'Ok, I am ready to continue.'
         self.speak.request(say)
         self.log_action_success()
 

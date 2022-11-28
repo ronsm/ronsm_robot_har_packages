@@ -528,6 +528,7 @@ class ADLSequenceModeller():
             msg = dm_intent()
             msg.intent = intent
             msg.args = args
+            msg.pose = PoseStamped()
             self.pub_offer_help.publish(msg)
 
             wait = 0
@@ -556,7 +557,16 @@ class ADLSequenceModeller():
         self.accept_reject_help = None
         return affirm
 
-    def execute_wait_for_action(self):
+    def execute_wait_for_action(self, intent, action, pose=None):
+        msg = dm_intent()
+        msg.intent = intent
+        msg.args = action
+        if pose != None:
+            msg.args = pose
+        else:
+            msg.pose = PoseStamped()
+        self.pub_intent_bus.publish(msg)
+
         success = True
         log = 'Waiting for help request action to complete...'
         self.logger.log(log)
@@ -605,7 +615,7 @@ class ADLSequenceModeller():
             log = 'Robot pose may need to be adjusted.'
             self.logger.log(log)
 
-            self.adjust_robot_pose(self.state_current_s1[0].state.robot_pose)
+            affirm = self.execute_wait_for_action('intent_move_to_pose', [], self.state_current_s1[0].state.robot_pose)
             log = 'Robot pose is being adjusted.'
             self.logger.log(log)
         else:
@@ -641,23 +651,13 @@ class ADLSequenceModeller():
         if locked_path != -1:
             for i in range(0, len(potential_helps[locked_path])):
                 if i == 0:
-                    msg = dm_intent()
-                    msg.intent = item[0]
-                    msg.args = item[1]
-                    self.pub_intent_bus.publish(msg)
-
-                    action_wait = self.execute_wait_for_action()
+                    action_wait = self.execute_wait_for_action(item[0], item[1])
                     if not action_wait:
                         break
                 else:
                     affirm = self.execute_wait_for_affirmation(potential_helps[locked_path][i][0], potential_helps[locked_path][i][1])
                     if affirm:
-                        msg = dm_intent()
-                        msg.intent = item[0]
-                        msg.args = item[1]
-                        self.pub_intent_bus.publish(msg)
-
-                        action_wait = self.execute_wait_for_action()
+                        action_wait = self.execute_wait_for_action(item[0], item[1])
                         if not action_wait:
                             break
                     else:
@@ -880,31 +880,6 @@ class ADLSequenceModeller():
             self.action_success = True
         else:
             self.action_success = False
-
-    # adjust robot pose
-
-    def adjust_robot_pose(self, pose):
-        pose.header.stamp = rospy.Time.now()
-        
-        goal = MoveBaseGoal()
-        goal.target_pose = pose
-
-        goal.target_pose.pose.position.x = 0.182
-        goal.target_pose.pose.position.y = 1.159
-
-        self.ros_ac_move_base.send_goal(goal)
-        
-        self.ros_ac_move_base.wait_for_result(rospy.Duration(60))
-
-        action_state = self.ros_ac_move_base.get_state()
-        if action_state == GoalStatus.SUCCEEDED:
-            self.logger.log_great('Action completed successfully.')
-            msg = String()
-            self.pub_workspace_pose.publish(msg)
-            return True
-        else:
-            self.logger.log_warn('Action failed to complete. Ensure path to location is not obstructed.')
-            return False
 
 if __name__ == '__main__':
     ase = ADLSequenceModeller('/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)

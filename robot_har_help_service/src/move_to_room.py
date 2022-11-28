@@ -57,6 +57,8 @@ class MoveToRoom():
         log = 'Attempting to move to:' + room
         self.logger.log(log)
 
+        self.body.move_to_neutral()
+
         destination = RALT_MAP[room]
 
         goal_x = destination[0]

@@ -6,6 +6,7 @@ from hsrb_interface import Robot, exceptions
 from move_to_room import MoveToRoom
 
 from std_msgs.msg import String
+from geometry_msgs.msg import PoseStamped
 from ronsm_messages.msg import dm_intent
 
 # rospy.init_node('test2')
@@ -29,6 +30,7 @@ ros_sub_action_end = rospy.Subscriber('/robot_har_rasa_core/action_end', String,
 msg = dm_intent()
 msg.intent = 'intent_pick_up_object'
 msg.args = ['cup']
+msg.pose = PoseStamped()
 ros_pub_intent_bus.publish(msg)
 
 while not action_end:
@@ -41,6 +43,7 @@ rospy.sleep(2)
 msg = dm_intent()
 msg.intent = 'intent_go_to_room'
 msg.args = ['bedroom']
+msg.pose = PoseStamped()
 ros_pub_intent_bus.publish(msg)
 
 while not action_end:
@@ -51,6 +54,7 @@ action_end = False
 msg = dm_intent()
 msg.intent = 'intent_hand_over'
 msg.args = []
+msg.pose = PoseStamped()
 ros_pub_intent_bus.publish(msg)
 
 # speak.request('Shall I take this to the bedroom?')

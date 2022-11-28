@@ -4,6 +4,7 @@ from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
 
 import rospy
+from geometry_msgs.msg import PoseStamped
 from ronsm_messages.msg import dm_intent
 
 rospy.init_node('robot_har_rasa_core')
@@ -37,6 +38,7 @@ class ActionSimpleROSCommand(Action):
         msg = dm_intent()
         msg.intent = str(intent)
         msg.args = args
+        msg.pose = PoseStamped()
 
         pub_intent_bus.publish(msg)
 
