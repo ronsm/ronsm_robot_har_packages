@@ -32,7 +32,6 @@ from ronsm_messages.msg import har_reset
 from ronsm_messages.msg import har_evidence_list
 from ronsm_messages.msg import har_arm_basic
 from ronsm_messages.msg import har_predictions
-from ronsm_messages.msg import dm_intent
 import ronsm_messages.msg
 
 etypes = ['event']
@@ -77,11 +76,9 @@ class Main():
         if RESET:
             self.ah = ADLHelper(self.rel_path, reset=True)
             self.asm = ADLSequenceModeller(self.rel_path, reset=True)
-            # self.arm = ADLRuleModeller(self.rel_path, reset=True)
         else:
             self.ah = ADLHelper(self.rel_path, reset=False)
             self.asm = ADLSequenceModeller(self.rel_path, reset=False)
-            # self.arm = ADLRuleModeller(self.rel_path, reset=False)
         self.asm.start_sequence('predict')
 
         # Reset Global DB
@@ -140,7 +137,6 @@ class Main():
         self.sub_ros_add_rule_stop = rospy.Subscriber('/robot_har_mln/mln/new_rule_stop', String, callback=self.ros_add_rule_stop_callback)
         self.sub_ros_add_rule_label = rospy.Subscriber('/robot_har_mln/mln/label', String, callback=self.ros_add_rule_label_callback)
         self.sub_ros_mln_train = rospy.Subscriber('/robot_har_mln/mln/train', String, callback=self.ros_mln_train_callback)
-        # self.sub_ros_arm_add_rule = rospy.Subscriber('/robot_har_mln/arm/add_rule', har_arm_basic, callback=self.arm.ros_add_rule_callback)
 
         # ROS Publishers
         self.pub_ros_predictions = rospy.Publisher('/robot_har_mln/predictions', har_predictions, queue_size=10)
@@ -285,7 +281,6 @@ class Main():
                     prediction = self.get_prevailing_prediction()
                     self.asm.action('predict', 'human', self.current_evidence, prediction=prediction)
                     self.ros_pub_predictions(prediction)
-                    # self.arm.evaluate_rules(self.s1_predictions_s, self.room_e_history[-1])
                     self.predict_next_cycle = False
                 rospy.rostime.wallsleep(0.5)
             

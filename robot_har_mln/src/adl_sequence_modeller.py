@@ -26,6 +26,7 @@ import actionlib
 from adl_helper import ADLHelper
 from log import Log
 from object_pool import ObjectPool
+from global_lock_helper import GlobalLockHelper
 
 from std_msgs.msg import Bool, String
 from geometry_msgs.msg import PoseStamped
@@ -82,6 +83,7 @@ class CandidateState:
 VERBOSE = True
 MAX_WAIT_ACCEPT_REJECT = 20
 MAX_WAIT_ACTION_END = 60
+MAX_TRIES_ACCEPT_REJECT = 3
 
 class ADLSequenceModeller():
     def __init__(self, rel_path, reset=False):
@@ -91,6 +93,7 @@ class ADLSequenceModeller():
         self.rel_path = rel_path
         self.adlhh = ADLHelper(self.rel_path, reset=False)
         self.op = ObjectPool()
+        self.glh = GlobalLockHelper()
 
         self.block_entries = False
 
@@ -134,8 +137,6 @@ class ADLSequenceModeller():
 
         self.last_valid_state_s1 = None
         self.last_valid_state_s2 = None
-
-        self.locked = False
 
         self.accept_reject_help = None
         self.action_end = False
@@ -316,9 +317,6 @@ class ADLSequenceModeller():
 
     def predict_step(self, prediction=None):
         self.estimate_state_unbounded()
-        # if self.s2_active:
-        #     if not self.state_estimate_success_s2:
-        #         self.failsafe_state_estimate_s2()
         self.next_states()
         self.execute_state()
         log = 'S1' + str(self.s1[-1].state)
@@ -518,20 +516,74 @@ class ADLSequenceModeller():
     def execute_state(self):
         x = threading.Thread(target=self.execute_state_thread, args=())
         x.start()
-    
+
+    def execute_wait_for_affirmation(self, intent, args):
+        affirm = False
+        response = False
+
+        self.glh.lock()
+        
+        tries = 0
+        while (not response) and (tries < MAX_TRIES_ACCEPT_REJECT):
+            msg = dm_intent()
+            msg.intent = intent
+            msg.args = args
+            self.pub_offer_help.publish(msg)
+
+            wait = 0
+            while (self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
+                self.logger.log('Waiting for response...')
+                wait = wait + 1
+                rospy.sleep(1)
+
+            if wait == MAX_WAIT_ACCEPT_REJECT:
+                log = 'No valid response to help request received in time.'
+                self.logger.log_warn(log)
+
+            if (self.accept_reject_help == 'intent_accept') or (self.accept_reject_help == 'intent_reject'):
+                response = True
+
+            tries = tries + 1
+
+        if response:
+            if self.accept_reject_help == 'intent_accept':
+                affirm = True
+            else:
+                affirm = False
+
+        self.glh.unlock()
+
+        self.accept_reject_help = None
+        return affirm
+
+    def execute_wait_for_action(self):
+        success = True
+        log = 'Waiting for help request action to complete...'
+        self.logger.log(log)
+
+        wait = 0
+        while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
+            self.logger.log('Waiting for response...')
+            wait = wait + 1
+            rospy.sleep(1)
+
+        if wait == MAX_WAIT_ACTION_END:
+            log = 'Action appears not to have completed on time. Help sequence will terminate.'
+            self.logger.log_warn(log)
+            success = False
+        
+        self.action_end = False
+        return success
+        
     def execute_state_thread(self):
         self.logger.log_mini_header('Execute State(s)')
         
         if self.s2_active:
             if (not self.state_estimate_success_s1) and (not self.state_estimate_success_s2):
-                self.locked = False
                 return
         else:
             if(not self.state_estimate_success_s1):
-                self.locked = False
                 return
-
-        self.locked = True
 
         # what percepts are we expecting?
         expected_percepts = []
@@ -548,37 +600,17 @@ class ADLSequenceModeller():
         self.logger.log(log)
 
         # does the robot need to move?
-        if self.state_current_s1[0].estimate == 'exact':
-            if self.state_current_s1[0].state.manual_alignment:
-                log = 'Robot pose may need to be adjusted.'
-                self.logger.log(log)
+        # if self.state_current_s1[0].estimate == 'exact':
+        if self.state_current_s1[0].state.manual_alignment:
+            log = 'Robot pose may need to be adjusted.'
+            self.logger.log(log)
 
-                msg = dm_intent()
-                msg.intent = 'intent_align_workspace'
-                msg.args = []
-                # self.pub_offer_help.publish(msg)
-
-                # wait = 0
-                # while(self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
-                #     self.logger.log('Waiting for response...')
-                #     wait = wait + 1
-                #     rospy.sleep(1)
-                # if wait == MAX_WAIT_ACCEPT_REJECT:
-                #     log = 'No valid response to help request received in time.'
-                #     self.logger.log_warn(log)
-
-                # if self.accept_reject_help == 'intent_accept':
-                #     self.adjust_robot_pose(self.state_current_s1[0].state.robot_pose)
-                #     log = 'Robot pose is being adjusted.'
-                #     self.logger.log(log)
-                # else:
-                #     return
-                self.adjust_robot_pose(self.state_current_s1[0].state.robot_pose)
-                log = 'Robot pose is being adjusted.'
-                self.logger.log(log)
-            else:
-                log = 'Robot pose does not need to be adjusted.'
-                self.logger.log(log)
+            self.adjust_robot_pose(self.state_current_s1[0].state.robot_pose)
+            log = 'Robot pose is being adjusted.'
+            self.logger.log(log)
+        else:
+            log = 'Robot pose does not need to be adjusted.'
+            self.logger.log(log)
 
         # what help can we offer?
         potential_helps = []
@@ -599,27 +631,12 @@ class ADLSequenceModeller():
             print(i)
             item = potential_helps[i][0]
 
-            msg = dm_intent()
-            msg.intent = item[0]
-            msg.args = item[1]
-            self.pub_offer_help.publish(msg)
-
-            wait = 0
-            while (self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
-                self.logger.log('Waiting for response...')
-                wait = wait + 1
-                rospy.sleep(1)
-            if wait == MAX_WAIT_ACCEPT_REJECT:
-                log = 'No valid response to help request received in time.'
-                self.logger.log_warn(log)
-
-            if self.accept_reject_help == 'intent_accept':
+            affirm = self.execute_wait_for_affirmation(item[0], item[1])
+            if affirm:
                 locked_path = i
             
             if locked_path != -1:
                 break
-
-        self.accept_reject_help = None
         
         if locked_path != -1:
             for i in range(0, len(potential_helps[locked_path])):
@@ -629,55 +646,22 @@ class ADLSequenceModeller():
                     msg.args = item[1]
                     self.pub_intent_bus.publish(msg)
 
-                    log = 'Waiting for help request action to complete...'
-                    self.logger.log(log)
-                    wait = 0
-                    while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
-                        self.logger.log('Waiting for response...')
-                        wait = wait + 1
-                        rospy.sleep(1)
-                    if wait == MAX_WAIT_ACTION_END:
-                        log = 'Action appears not to have completed on time. Help sequence will terminate.'
-                        self.logger.log_warn(log)
+                    action_wait = self.execute_wait_for_action()
+                    if not action_wait:
                         break
                 else:
-                    msg = dm_intent()
-                    msg.intent = potential_helps[locked_path][i][0]
-                    msg.args = potential_helps[locked_path][i][1]
-                    self.pub_offer_help.publish(msg)
-
-                    wait = 0
-                    while (self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
-                        self.logger.log('Waiting for response...')
-                        wait = wait + 1
-                        rospy.sleep(1)
-                    if wait == MAX_WAIT_ACCEPT_REJECT:
-                        log = 'No valid response to help request received in time.'
-                        self.logger.log_warn(log)
-
-                    if self.accept_reject_help == 'intent_accept':
+                    affirm = self.execute_wait_for_affirmation(potential_helps[locked_path][i][0], potential_helps[locked_path][i][1])
+                    if affirm:
                         msg = dm_intent()
                         msg.intent = item[0]
                         msg.args = item[1]
                         self.pub_intent_bus.publish(msg)
 
-                        log = 'Waiting for help request action to complete...'
-                        self.logger.log(log)
-                        wait = 0
-                        while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
-                            self.logger.log('Waiting for response...')
-                            wait = wait + 1
-                            rospy.sleep(1)
-                        if wait == MAX_WAIT_ACTION_END:
-                            log = 'Action appears not to have completed on time. Help sequence will terminate.'
-                            self.logger.log_warn(log)
+                        action_wait = self.execute_wait_for_action()
+                        if not action_wait:
                             break
-                        elif self.accept_reject_help == 'intent_reject':
-                            break
-
-                    self.accept_reject_help = None
-                self.action_end = False
-            self.accept_reject_help = None
+                    else:
+                        break
 
         # has too much time passed?
         # start a thread that monitors time elapsed and does something
@@ -857,15 +841,16 @@ class ADLSequenceModeller():
             log = 'Valid help request message received: ' + msg.intent
             self.logger.log(log)
 
-            x = threading.Thread(target=self.ros_callback_sub_help_request_thread, args=())
+            x = threading.Thread(target=self.ros_callback_sub_help_request_thread, args=(msg,))
             x.start()
-        elif msg.intent in accept_reject_intents:
-            log = 'Valid accept/reject message received: ' + msg.intent
+        
+        if self.glh.state():
+            log = 'Redirecting to global lock handler; ' + msg.intent
             self.logger.log(log)
 
             self.accept_reject_help = msg.intent
 
-    def ros_callback_sub_help_request_thread(self):
+    def ros_callback_sub_help_request_thread(self, msg):
         wait = 0
         while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
             self.logger.log('Waiting for help request to be completed...')

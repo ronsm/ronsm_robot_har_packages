@@ -27,6 +27,7 @@ class Main():
         self.rel_path = rospack.get_path('robot_har_dialogue_system')
 
         self.lock = 0
+        self.global_lock = False
 
         self.rospack = rospkg.RosPack()
 
@@ -47,22 +48,24 @@ class Main():
         rospy.spin()
 
     # ROS Callbacks
+        
+    def ros_callback_global_lock(self, msg):
+        self.global_lock = msg.data
 
     def callback_process_intent(self, msg):
-        intent = msg.intent
-        if intent == 'intent_start_teaching_adl':
-            self.hi.start_teaching_adl()
-        elif intent == 'intent_end_teaching_adl':
-            rospy.sleep(8)
-            label = self.dialogue_manager.story_query_all_labels_teaching()
-            if label != '':
-                self.hi.label_teaching_adl(label)
-                rospy.sleep(1.0)
-            self.hi.stop_teaching_adl() # happens here bc robot_har_mln expects start, label, stop ^\_(*.*)_/^
-    #     elif intent == 'create_adl_monitoring_rule':
-    #         self.dialogue_manager.respond_to_input(text)
-        else:
-            self.logger.log_warn('Invalid intent. Disregarding input.')
+        if not self.global_lock:
+            intent = msg.intent
+            if intent == 'intent_start_teaching_adl':
+                self.hi.start_teaching_adl()
+            elif intent == 'intent_end_teaching_adl':
+                rospy.sleep(8)
+                label = self.dialogue_manager.story_query_all_labels_teaching()
+                if label != '':
+                    self.hi.label_teaching_adl(label)
+                    rospy.sleep(1.0)
+                self.hi.stop_teaching_adl() # happens here bc robot_har_mln expects start, label, stop ^\_(*.*)_/^
+            else:
+                self.logger.log_warn('Invalid intent. Disregarding input.')
 
     def callback_al_request(self, msg):
         self.lock = 1

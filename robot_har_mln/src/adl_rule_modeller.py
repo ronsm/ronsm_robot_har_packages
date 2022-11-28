@@ -34,6 +34,7 @@ class ADLRuleModeller():
         self.adlhh = ADLHelper(self.rel_path, reset=False)
 
         self.pub_move_to_room = rospy.Publisher('/robot_har_help_service/move_to_room/request', String, queue_size=10)
+        self.sub_ros_arm_add_rule = rospy.Subscriber('/robot_har_mln/arm/add_rule', har_arm_basic, callback=self.ros_add_rule_callback)
 
         if reset:
             os.remove(self.status_file)

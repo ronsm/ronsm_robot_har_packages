@@ -14,7 +14,7 @@ from marker_align import MarkerAlign
 from hand_over import HandOver
 
 # standard messages
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 
 # custom messages
 from ronsm_messages.msg import dm_intent
@@ -34,6 +34,7 @@ class Main():
 
         self.ros_sub_intent_bus = rospy.Subscriber('/robot_har_rasa_core/intent_bus', dm_intent, callback=self.ros_callback_intent_bus)
         self.ros_pub_action_end = rospy.Publisher('/robot_har_rasa_core/action_end', String, queue_size=10)
+        self.ros_sub_global_lock = rospy.Subscriber('/ronsm_global_lock', Bool, callback=self.ros_callback_global_lock)
 
         # set up HSR
         self.robot = Robot()
@@ -54,6 +55,9 @@ class Main():
         self.marker_align = MarkerAlign(self.speak, self.base, self.body)
         self.hand_over = HandOver(self.speak, self.body, self.grip)
 
+        # instance variables
+        self.global_lock = False
+
         # ready
         self.speak.request('Ready to help.')
         self.logger.log_great('Ready.')
@@ -63,46 +67,53 @@ class Main():
     # core logic
 
     def process_intent(self, intent, args):
-        log = 'Processing intent: ' + intent
-        self.logger.log(log)
+        if not self.global_lock:
+            log = 'Processing intent: ' + intent
+            self.logger.log(log)
 
-        # should match those in robot_har_rasa 
-        if intent == 'intent_pick_up_object':
-            if len(args) == 1:
-                self.intent_pick_up_object(target=args[0])
+            # should match those in robot_har_rasa 
+            if intent == 'intent_pick_up_object':
+                if len(args) == 1:
+                    self.intent_pick_up_object(target=args[0])
+                else:
+                    self.log_intent_missing_args(intent)
+            elif intent == 'intent_go_to_room':
+                if len(args) == 1:
+                    self.intent_go_to_room(target=args[0])
+                else:
+                    self.log_intent_missing_args(intent)
+            elif intent == 'intent_hand_over':
+                if len(args) == 0:
+                    self.hand_over.request()
+                else:
+                    self.log_intent_missing_args(intent)
+            elif intent == 'intent_register_marker':
+                if len(args) == 0:
+                    self.marker_align.request_register_marker()
+                else:
+                    self.log_intent_missing_args(intent)
+            elif intent == 'intent_look_at_marker':
+                if len(args) == 0:
+                    self.marker_align.request_look_at_marker()
+                else:
+                    self.log_intent_missing_args(intent)
+            elif intent == 'intent_test_speech':
+                self.speak.request('This is a test of the speech.')
+                self.speak.request('This sentence should not interrupt the previous one.')
             else:
-                self.log_intent_missing_args(intent)
-        elif intent == 'intent_go_to_room':
-            if len(args) == 1:
-                self.intent_go_to_room(target=args[0])
-            else:
-                self.log_intent_missing_args(intent)
-        elif intent == 'intent_hand_over':
-            if len(args) == 0:
-                self.hand_over.request()
-            else:
-                self.log_intent_missing_args(intent)
-        elif intent == 'intent_register_marker':
-            if len(args) == 0:
-                self.marker_align.request_register_marker()
-            else:
-                self.log_intent_missing_args(intent)
-        elif intent == 'intent_look_at_marker':
-            if len(args) == 0:
-                self.marker_align.request_look_at_marker()
-            else:
-                self.log_intent_missing_args(intent)
-        elif intent == 'intent_test_speech':
-            self.speak.request('This is a test of the speech.')
-            self.speak.request('This sentence should not interrupt the previous one.')
+                log = 'No service handler available for intent: ' + intent
+                self.logger.log_warn(log)
         else:
-            log = 'No service handler available for intent: ' + intent
+            log = 'Global lock is active, will not process intents.'
             self.logger.log_warn(log)
 
     # callbacks
 
     def ros_callback_intent_bus(self, msg):
         self.process_intent(msg.intent, msg.args)
+
+    def ros_callback_global_lock(self, msg):
+        self.global_lock = msg.data
 
     # help services
 
