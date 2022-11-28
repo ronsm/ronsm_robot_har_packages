@@ -146,6 +146,8 @@ class Main():
     def log_intent_missing_args(self, intent):
         log = 'Incorrect arguments supplied for intent: ' + intent
         self.logger.log_warn(log)
+        say = 'Sorry, I am not sure what you said. Please try again.'
+        self.speak.request(say)
 
     def log_action_success(self):
         self.logger.log_great('Help request actioned successfully.')

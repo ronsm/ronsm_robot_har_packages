@@ -35,6 +35,10 @@ responses:
   - text: 'Ok, I am done learning your activity.'
   utter_create_adl_monitoring_rule:
   - text: 'Sorry, this feature is currently unsupported.'
+  utter_out_of_scope:
+  - text: 'Sorry, I am not sure what you said. Please try again.'
+  utter_please_rephrase:
+  - text: 'Sorry, I am not sure what you said. Please try again.'
 
 session_config:
   session_expiration_time: 60

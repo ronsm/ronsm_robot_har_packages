@@ -2,6 +2,22 @@ version: "2.0"
 
 nlu:
 
+# out of scope
+- intent: out_of_scope
+  examples: |
+    - you are stupid
+    - i hate robots
+    - why don't i just watch tv?
+    - order me a takeaway
+    - please don't clean the air
+    - am i going to the bahamas
+    - can we watch monsters inc?
+    - who is the us president?
+    - what is 2 + 2?
+    - fuck off
+    - eat my shorts
+    - just leave me alone
+
 # accpt/reject
 - intent: intent_accept
   examples: |
@@ -27,6 +43,12 @@ nlu:
     - let me show you how i make breakfast
     - let me show you how i do activity
     - i'd like to teach you how i activity
+    - i will show you how i do my activity
+    - let me show you my morning routine
+    - can i teach you my morning routine
+    - can i teach you something
+    - i'm gonna show you my routine
+    - start learning please
 
 - intent: intent_end_teaching_adl
   examples: |
@@ -35,12 +57,17 @@ nlu:
     - i'm finished teaching you how i activity
     - i'm done teaching
     - i've finished teaching you
+    - ok i am finished teaching
+    - ok i am done
+    - that's me done teaching you
+    - i'm finishing teaching now
+    - stop learning please
 
-- intent: intent_register_marker
-  examples: |
-    - i want to register a marker for you to look at
-    - let me register a marker
-    - i'd like to register a marker
+# - intent: intent_register_marker
+#   examples: |
+#     - i want to register a marker for you to look at
+#     - let me register a marker
+#     - i'd like to register a marker
 
 - intent: intent_look_at_marker
   examples: |
@@ -52,6 +79,11 @@ nlu:
     - look at the marker
     - you can look at the marker now
     - watch where the marker is
+    - can you follow the marker
+    - look where i put the marker
+    - can you follow this marker
+    - look where i am showing you
+    - watch where i put the marker
     
 - intent: intent_create_adl_monitoring_rule
   examples: |
@@ -70,6 +102,13 @@ nlu:
     - please pick up the [bottle](object)
     - pick up the [box](obejct) from the worktop
     - can you pick up that [mug](object) please
+    - grab the [bottle](object) for me
+    - can you get that [bottle](object) for me
+    - get the [mug](object) from the worktop
+    - take the [bowl](object) from the worktop
+    - get the [box](object) from the bunker
+    - pick up the [flask](object) please
+    - can you pick up the [flask](object)
 
 - intent: intent_go_to_room
   examples: |
@@ -79,6 +118,9 @@ nlu:
     - can you go to the [bathroom](room)
     - take it to the [hall](room)
     - bring it to the [bedroom](room)
+    - take yourself to the [bedroom](room)
+    - go to the [living room](room)
+    - now go to the [bathroom](room)
 
 - intent: intent_hand_over
   examples: |
@@ -88,13 +130,25 @@ nlu:
     - hand me the bottle
     - hand me the mug
     - please hand it to me
+    - give it to me
+    - ok pass me the bottle
+    - please pass it to me
+    - right now hand me the bottle
+    - can i have the flask
+    - give me the flask
+    - can i take that from you
+    - give me what you are holding
 
 # synonyms
 
-# - synonym: cup
-#   examples: |
-#     - bowl
-#     - bottle
-#     - plate
-#     - box
-#     - mug
+- synonym: bottle
+  examples: |
+    - flask
+    - flask of tea
+    - bottle of tea
+    - travel bottle
+    - travel mug
+
+- synonym: lounge
+  examples: |
+    - living room

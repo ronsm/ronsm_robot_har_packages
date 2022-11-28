@@ -4,6 +4,16 @@ rules:
 
   # Custom Actions
 
+- rule: Out of scope
+  steps:
+  - intent: out_of_scope
+  - action: utter_out_of_scope
+
+- rule: Fallback classifier
+  steps:
+  - intent: nlu_fallback
+  - action: utter_please_rephrase
+
 - rule: Accept help request
   steps:
   - intent: intent_accept
@@ -46,10 +56,10 @@ rules:
   - intent: intent_hand_over
   - action: action_simple_ros_command
 
-- rule: Register a marker
-  steps:
-  - intent: intent_register_marker
-  - action: action_simple_ros_command
+# - rule: Register a marker
+#   steps:
+#   - intent: intent_register_marker
+#   - action: action_simple_ros_command
 
 - rule: Look at the marker
   steps:
