@@ -73,6 +73,8 @@ class PickFromTF():
                 error = True
                 self.logger.log_warn('Failed to grasp.')
 
+                self.body.move_to_neutral()
+
         if error:
             self.logger.log_warn('An error occured while executing this action.')
 

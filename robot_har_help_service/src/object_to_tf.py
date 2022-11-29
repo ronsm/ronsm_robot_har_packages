@@ -51,7 +51,7 @@ class ObjectToTF():
 
     def request(self, target):
         waits = 0
-        while(self.bounding_boxes == None):
+        while(self.bounding_boxes is None):
             self.logger.log('Waiting for bounding boxes...')
             rospy.sleep(1.0)
             waits = waits + 1
@@ -60,7 +60,7 @@ class ObjectToTF():
                 return False
 
         waits = 0
-        while(self.depth == None):
+        while(self.depth is None):
             self.logger.log('Waiting for depth image...')
             rospy.sleep(1.0)
             waits = waits + 1

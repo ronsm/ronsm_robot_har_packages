@@ -2,7 +2,7 @@
 
 # standard libraries
 import rospy
-from hsrb_interface import Robot, exceptions
+from hsrb_interface import Robot, exceptions, collision_world
 
 # internal classes
 from log import Log
@@ -13,6 +13,7 @@ from move_to_room import MoveToRoom
 from move_to_pose import MoveToPose
 from marker_align import MarkerAlign
 from hand_over import HandOver
+from collision_array import CollisionArray
 
 # standard messages
 from std_msgs.msg import String, Bool
@@ -41,6 +42,7 @@ class Main():
         self.robot = Robot()
         try:
             self.logger.log('Waiting on robot resources...')
+            self.colw = self.robot.try_get('global_collision_world')
             self.base = self.robot.try_get('omni_base')
             self.body = self.robot.try_get('whole_body')
             self.grip = self.robot.try_get('gripper')
@@ -56,6 +58,10 @@ class Main():
         self.move_to_pose = MoveToPose(self.body)
         self.marker_align = MarkerAlign(self.speak, self.base, self.body)
         self.hand_over = HandOver(self.speak, self.body, self.grip)
+        self.collision_array = CollisionArray(self.colw)
+
+        # set up collision world
+        self.body.collision_world = self.colw
 
         # instance variables
         self.global_lock = False
@@ -125,10 +131,6 @@ class Main():
     # help services
 
     def intent_pick_up_object(self, target):
-        log = 'Waiting to ensure images are up to date...'
-        self.logger.log(log)
-        rospy.sleep(10)
-
         success = self.object_to_transform.request(target)
         if not success:
             say = 'Sorry, I was unable to detect the ' + target

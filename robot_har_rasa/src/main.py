@@ -21,7 +21,7 @@ RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 RASA_TRACKER = 'http://localhost:5005/conversations/robot_har_rasa/tracker'
 RASA_MIN_CONF = 0.75
 OUTPUT = 'ROBOT'
-INPUT = 'MICROPHONE'
+INPUT = 'KEYBOARD'
 
 class Main():
     def __init__(self):
@@ -102,7 +102,7 @@ class Main():
 
         valid = valid.json()
 
-        log = 'RASA State - Intent: ' + valid['latest_message']['intent']['name'] + ', Confidence: ' + valid['latest_message']['intent']['confidence']
+        log = 'RASA State - Intent: ' + valid['latest_message']['intent']['name'] + ', Confidence: ' + str(valid['latest_message']['intent']['confidence'])
         self.logger.log(log)
         try:
             log = 'RASA Entities - Entity: ' + valid['latest_message']['entities'][0]['entity'] + ', Value: ' + valid['latest_message']['entities'][0]['value']
