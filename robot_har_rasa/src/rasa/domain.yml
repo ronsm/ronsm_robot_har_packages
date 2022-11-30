@@ -4,6 +4,7 @@ intents:
   # accept/reject
   - intent_accept
   - intent_reject
+  - intent_wait
   # teaching commands 
   - intent_start_teaching_adl
   - intent_end_teaching_adl

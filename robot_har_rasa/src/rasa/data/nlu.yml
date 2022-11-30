@@ -34,13 +34,23 @@ nlu:
     - yeah
     - yeah go ahead
 
+- intent: intent_wait
+  examples: |
+    - not yet
+    - wait a moment
+    - can you wait a minute
+    - i'm not ready yet
+    - hold on a second
+    - hold on a moment
+    - wait just a second
+
 - intent: intent_reject
   examples: |
     - no
     - no thanks
     - no thank you
     - please don't
-    - don't do that  
+    - don't do that
 
 # teaching commands
 - intent: intent_start_teaching_adl
