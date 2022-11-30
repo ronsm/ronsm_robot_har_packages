@@ -541,8 +541,12 @@ class ADLSequenceModeller():
                 log = 'No valid response to help request received in time.'
                 self.logger.log_warn(log)
 
-            if (self.accept_reject_help == 'intent_accept') or (self.accept_reject_help == 'intent_reject'):
-                response = True
+            if self.accept_reject_help in accept_reject_intents:
+                if self.accept_reject_help == 'intent_wait':
+                    tries = tries - 1
+                    rospy.sleep(10)
+                else:
+                    response = True
 
             tries = tries + 1
 
