@@ -5,6 +5,8 @@ import sys
 import rospy
 import rospkg
 import requests
+from threading import Thread
+from queue import Queue
 
 # internal classes
 from log import Log
@@ -21,7 +23,7 @@ RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 RASA_TRACKER = 'http://localhost:5005/conversations/robot_har_rasa/tracker'
 RASA_MIN_CONF = 0.75
 OUTPUT = 'ROBOT'
-INPUT = 'KEYBOARD'
+INPUT = 'MICROPHONE'
 
 class Main():
     def __init__(self):
@@ -35,8 +37,8 @@ class Main():
         self.rel_path = rospack.get_path('robot_har_rasa')
 
         self.ros_sub_offer_help = rospy.Subscriber('/robot_har_mln/asm/offer_help', dm_intent, callback=self.ros_callback_offer_help)
-
         self.ros_sub_text = rospy.Subscriber('/robot_hsr_asr/text', String, callback=self.ros_callback_text)
+        self.ros_sub_rasa_utterance_internal = rospy.Subscriber('/robot_har_rasa/rasa_utterance_internal', String, callback=self.ros_callback_rasa_utterance_internal)
 
         rospy.init_node('robot_har_rasa')
 
@@ -52,15 +54,16 @@ class Main():
 
     def spin(self):
         while not rospy.is_shutdown():
+            utterance = None
+            if INPUT == 'MICROPHONE':
+                self.io.listen()
             cmd = input('~>')
             if cmd == 'exit':
                 sys.exit(0)
             elif cmd == 'x':
-                if INPUT == 'KEYBOARD':
-                    utterance = input('utterance: ')
-                elif INPUT == 'MICROPHONE':
-                    utterance = self.io.listen() # enable this to get input from microphone instead of keyboard
-            self.send_to_rasa(utterance)
+                utterance = input('utterance: ')
+            if utterance is not None:
+                self.send_to_rasa(utterance)
             rospy.sleep(0.5)
 
     def offer_help(self, intent, args):
@@ -125,6 +128,9 @@ class Main():
         self.offer_help(msg.intent, msg.args)
 
     def ros_callback_text(self, msg):
+        self.send_to_rasa(msg.data)
+
+    def ros_callback_rasa_utterance_internal(self, msg):
         self.send_to_rasa(msg.data)
 
 if __name__ == '__main__':
