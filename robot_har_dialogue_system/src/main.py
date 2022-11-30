@@ -15,6 +15,7 @@ from std_msgs.msg import String
 from ronsm_messages.msg import dm_al_request, dm_intent
 
 OUTPUT = 'ROBOT'
+MODE = 'NORMAL' # NORMAL or ALL_OTHER
 
 class Main():
     def __init__(self):
@@ -58,12 +59,22 @@ class Main():
             if intent == 'intent_start_teaching_adl':
                 self.hi.start_teaching_adl()
             elif intent == 'intent_end_teaching_adl':
-                rospy.sleep(8)
-                label = self.dialogue_manager.story_query_all_labels_teaching()
-                if label != '':
-                    self.hi.label_teaching_adl(label)
-                    rospy.sleep(1.0)
-                self.hi.stop_teaching_adl() # happens here bc robot_har_mln expects start, label, stop ^\_(*.*)_/^
+                if MODE == 'NORMAL':
+                    rospy.sleep(8)
+                    label = self.dialogue_manager.story_query_all_labels_teaching()
+                    if label != '':
+                        self.hi.label_teaching_adl(label)
+                        rospy.sleep(3.0)
+                    else:
+                        self.hi.label_teaching_adl('Other')
+                        rospy.sleep(3.0)
+                    self.hi.stop_teaching_adl() # happens here bc robot_har_mln expects start, label, stop ^\_(*.*)_/^
+                elif MODE == 'ALL_OTHER':
+                    self.hi.label_teaching_adl('Other')
+                    rospy.sleep(3)
+                    self.hi.stop_teaching_adl() # happens here bc robot_har_mln expects start, label, stop ^\_(*.*)_/^
+                else:
+                    self.logger.log_warn('Invalid mode specified. Valid modes are NORMAL or ALL_OTHER.')
             else:
                 self.logger.log_warn('Invalid intent. Disregarding input.')
 
