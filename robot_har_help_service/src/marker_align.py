@@ -212,9 +212,7 @@ class MarkerAlign():
         action_state = self.ros_ac_move_base.get_state()
         if action_state == GoalStatus.SUCCEEDED:
             self.logger.log_great('Action completed successfully.')
-            # self.body.move_to_joint_positions({'arm_flex_joint': -2.5, 'wrist_flex_joint': 1.2})
             self.body.move_to_joint_positions({'head_tilt_joint': 0.0})
-            # self.body.move_to_joint_positions({'arm_lift_joint': 0.45})
             return True
         else:
             self.logger.log_warn('Action failed to complete. Ensure path to location is not obstructed.')

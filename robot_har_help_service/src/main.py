@@ -9,6 +9,7 @@ from log import Log
 from speak import Speak
 from object_to_tf import ObjectToTF
 from pick_from_tf import PickFromTF
+from pick_marker import PickMarker
 from move_to_room import MoveToRoom
 from move_to_pose import MoveToPose
 from marker_align import MarkerAlign
@@ -54,6 +55,7 @@ class Main():
         self.speak = Speak()
         self.object_to_transform = ObjectToTF(self.speak)
         self.pick_from_tf = PickFromTF(self.speak, self.base, self.body, self.grip)
+        self.pick_marker = PickMarker(self.speak, self.base, self.body, self.grip)
         self.move_to_room = MoveToRoom(self.body)
         self.move_to_pose = MoveToPose(self.body)
         self.marker_align = MarkerAlign(self.speak, self.base, self.body)
@@ -66,8 +68,7 @@ class Main():
         # instance variables
         self.global_lock = False
 
-        # ready
-        self.speak.request('Ready to help.')
+        # ready       
         self.logger.log_great('Ready.')
 
         rospy.spin()
@@ -130,22 +131,34 @@ class Main():
 
     # help services
 
-    def intent_pick_up_object(self, target):
-        success = self.object_to_transform.request(target)
-        if not success:
-            say = 'Sorry, I was unable to detect the ' + target
-            self.speak.request(say)
-            self.log_action_failure()
-            return
+    # def intent_pick_up_object(self, target):
+    #     success = self.object_to_transform.request(target)
+    #     if not success:
+    #         say = 'Sorry, I was unable to detect the ' + target
+    #         self.speak.request(say)
+    #         self.log_action_failure()
+    #         return
             
-        success = self.pick_from_tf.request()
+    #     success = self.pick_from_tf.request()
+    #     if not success:
+    #         say = 'Sorry, I was unable to pick up the ' + target
+    #         self.speak.request(say)
+    #         self.log_action_failure()
+    #         return
+
+    #     say = 'Ok, I have picked up the ' + target 
+    #     self.speak.request(say)
+    #     self.log_action_success()
+
+    def intent_pick_up_object(self, target):
+        success = self.pick_marker.request()
         if not success:
             say = 'Sorry, I was unable to pick up the ' + target
             self.speak.request(say)
             self.log_action_failure()
             return
 
-        say = 'Ok, I have picked up the ' + target 
+        say = 'Ok, I have picked up the ' + target
         self.speak.request(say)
         self.log_action_success()
 

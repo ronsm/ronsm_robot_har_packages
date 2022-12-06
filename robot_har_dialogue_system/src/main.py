@@ -15,7 +15,7 @@ from std_msgs.msg import String
 from ronsm_messages.msg import dm_al_request, dm_intent
 
 OUTPUT = 'ROBOT'
-MODE = 'NORMAL' # NORMAL or ALL_OTHER
+MODE = 'STUDY' # NORMAL or STUDY
 
 class Main():
     def __init__(self):
@@ -69,7 +69,7 @@ class Main():
                         self.hi.label_teaching_adl('Other')
                         rospy.sleep(3.0)
                     self.hi.stop_teaching_adl() # happens here bc robot_har_mln expects start, label, stop ^\_(*.*)_/^
-                elif MODE == 'ALL_OTHER':
+                elif MODE == 'STUDY':
                     self.hi.label_teaching_adl('Other')
                     rospy.sleep(3)
                     self.hi.stop_teaching_adl() # happens here bc robot_har_mln expects start, label, stop ^\_(*.*)_/^

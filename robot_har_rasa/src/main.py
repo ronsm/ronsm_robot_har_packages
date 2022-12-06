@@ -23,7 +23,7 @@ RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 RASA_TRACKER = 'http://localhost:5005/conversations/robot_har_rasa/tracker'
 RASA_MIN_CONF = 0.75
 OUTPUT = 'ROBOT'
-INPUT = 'MICROPHONE'
+INPUT = 'KEYBOARD'
 
 class Main():
     def __init__(self):
@@ -48,15 +48,26 @@ class Main():
         # ready
         self.logger.log_great('Ready.')
 
-        self.spin()
+        if INPUT == 'MICROPHONE':
+            self.spin_microphone()
+        elif INPUT == 'KEYBOARD':
+            self.spin_keyboard()
+        elif INPUT == 'REQUEST_ONLY':
+            self.spin_request_only()
+        else:
+            self.logger.log_warn('Invalid input mode specified. Valid options are MICROPHONE, KEYBOARD, or REQUEST_ONLY.')
+            sys.exit()
 
-    # core logic
+    # spins
 
-    def spin(self):
+    def spin_microphone(self):
+        self.io.listen()
+        while not rospy.is_shutdown():
+            rospy.sleep(1.0)
+
+    def spin_keyboard(self):
         while not rospy.is_shutdown():
             utterance = None
-            if INPUT == 'MICROPHONE':
-                self.io.listen()
             cmd = input('~>')
             if cmd == 'exit':
                 sys.exit(0)
@@ -64,7 +75,13 @@ class Main():
                 utterance = input('utterance: ')
             if utterance is not None:
                 self.send_to_rasa(utterance)
-            rospy.sleep(0.5)
+            rospy.sleep(1)
+
+    def spin_request_only(self):
+        while not rospy.is_shutdown():
+            rospy.sleep(1)
+
+    # core logic
 
     def offer_help(self, intent, args):
         # should match those in robot_har_help_service
@@ -88,7 +105,9 @@ class Main():
         if INPUT == 'KEYBOARD':
             utterance = input('utterance: ')
         elif INPUT == 'MICROPHONE':
-            utterance = self.io.listen() # enable this to get input from microphone instead of keyboad
+            utterance = self.io.listen()
+        elif INPUT == 'REQUEST_ONLY':
+            utterance = self.io.listen()
 
         self.send_to_rasa(utterance)
 

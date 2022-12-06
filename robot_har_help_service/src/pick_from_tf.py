@@ -67,12 +67,7 @@ class PickFromTF():
                 self.body.move_end_effector_pose(HAND_UP, HAND_TF)
                 self.body.move_end_effector_pose(HAND_BACK, HAND_TF)
 
-                try:
-                    # self.base.go_rel(x=-0.3)
-                    self.body.move_to_neutral()
-                    # self.base.go_rel(x=0.3)
-                except:
-                    self.logger.log_warn('Unable to return to neutral position.')
+                self.body.move_to_neutral()
             except Exception as e:
                 print(e)
                 error = True
