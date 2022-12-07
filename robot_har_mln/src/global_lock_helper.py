@@ -25,7 +25,7 @@ class GlobalLockHelper():
         self.ros_pub_global_lock = rospy.Publisher('/ronsm_global_lock', Bool, queue_size=10)
 
         # instance variables
-        self.state = False
+        self.lock_state = False
 
         # ready
         self.logger.log_great('Ready.')
@@ -34,13 +34,13 @@ class GlobalLockHelper():
         msg = Bool()
         msg.data = True
         self.ros_pub_global_lock.publish(msg)
-        self.state = True
+        self.lock_state = True
 
     def unlock(self):
         msg = Bool()
         msg.data = False
         self.ros_pub_global_lock.publish(msg)
-        self.state = False
+        self.lock_state = False
 
     def state(self):
-        return self.state
+        return self.lock_state

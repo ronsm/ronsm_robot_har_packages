@@ -23,7 +23,7 @@ RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 RASA_TRACKER = 'http://localhost:5005/conversations/robot_har_rasa/tracker'
 RASA_MIN_CONF = 0.75
 OUTPUT = 'ROBOT'
-INPUT = 'KEYBOARD'
+INPUT = 'REQUEST_ONLY' # MICROPHONE, KEYBOARD, or REQUEST_ONLY
 
 class Main():
     def __init__(self):
@@ -105,9 +105,9 @@ class Main():
         if INPUT == 'KEYBOARD':
             utterance = input('utterance: ')
         elif INPUT == 'MICROPHONE':
-            utterance = self.io.listen()
+            utterance = self.io.listen_once()
         elif INPUT == 'REQUEST_ONLY':
-            utterance = self.io.listen()
+            utterance = self.io.listen_once()
 
         self.send_to_rasa(utterance)
 

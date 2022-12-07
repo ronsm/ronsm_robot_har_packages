@@ -121,34 +121,34 @@ class InputOutput(object):
             print('Terminated worker thread.')
             self.audio_queue.task_done()
             
-    # def listen(self):
-    #     with sr.Microphone() as source:
-    #         log = 'Adjusting for ambient noise...'
-    #         self.logger.log(log)
-    #         self.r.adjust_for_ambient_noise(source)
-    #         path = self.rel_path + '/src/sounds/tone_beep.wav'
-    #         playsound(path)
-    #         log = 'Say something...'
-    #         self.logger.log(log)
-    #         try:
-    #             audio = self.r.listen(source, timeout=10, phrase_time_limit=5)
-    #             log = 'Done listening.'
-    #             self.logger.log(log)
-    #         except sr.WaitTimeoutError:
-    #             msg = 'No audio detected.'
-    #             self.logger.log_warn(msg)
-    #     try:
-    #         log = 'Sending audio to Google Cloud ASR for processing...'
-    #         self.logger.log(log)
-    #         result = self.r.recognize_google_cloud(audio)
-    #         log = 'Google Cloud ASR thinks you said: ' + result
-    #         self.logger.log(log)
-    #         return result
-    #     except sr.UnknownValueError:
-    #         log = 'Google Cloud ASR could not understand audio.'
-    #         self.logger.log_warn(log)
-    #     except sr.RequestError as e:
-    #         print("Could not request results from Google Cloud ASR service: {0}".format(e))
+    def listen_once(self):
+        with sr.Microphone() as source:
+            log = 'Adjusting for ambient noise...'
+            self.logger.log(log)
+            self.r.adjust_for_ambient_noise(source)
+            path = self.rel_path + '/src/sounds/tone_beep.wav'
+            playsound(path)
+            log = 'Say something...'
+            self.logger.log(log)
+            try:
+                audio = self.r.listen(source, timeout=10, phrase_time_limit=5)
+                log = 'Done listening.'
+                self.logger.log(log)
+            except sr.WaitTimeoutError:
+                msg = 'No audio detected.'
+                self.logger.log_warn(msg)
+        try:
+            log = 'Sending audio to Google Cloud ASR for processing...'
+            self.logger.log(log)
+            result = self.r.recognize_google_cloud(audio)
+            log = 'Google Cloud ASR thinks you said: ' + result
+            self.logger.log(log)
+            return result
+        except sr.UnknownValueError:
+            log = 'Google Cloud ASR could not understand audio.'
+            self.logger.log_warn(log)
+        except sr.RequestError as e:
+            print("Could not request results from Google Cloud ASR service: {0}".format(e))
 
 if __name__ == '__main__':
     io = InputOutput()

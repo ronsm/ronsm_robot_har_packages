@@ -151,6 +151,8 @@ class Main():
     #     self.log_action_success()
 
     def intent_pick_up_object(self, target):
+        say = 'Ok, I will try to pick up the ' + target
+        self.speak.request(say)
         success = self.pick_marker.request()
         if not success:
             say = 'Sorry, I was unable to pick up the ' + target

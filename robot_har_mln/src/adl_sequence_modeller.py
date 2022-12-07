@@ -27,6 +27,7 @@ from adl_helper import ADLHelper
 from log import Log
 from object_pool import ObjectPool
 from global_lock_helper import GlobalLockHelper
+from check_preconditions import CheckPreconditions
 
 from std_msgs.msg import Bool, String
 from geometry_msgs.msg import PoseStamped
@@ -94,6 +95,7 @@ class ADLSequenceModeller():
         self.adlhh = ADLHelper(self.rel_path, reset=False)
         self.op = ObjectPool()
         self.glh = GlobalLockHelper()
+        self.cp = CheckPreconditions()
 
         self.block_entries = False
 
@@ -642,8 +644,12 @@ class ADLSequenceModeller():
 
         locked_path = -1
         for i in range(0, len(potential_helps)):
-            print(i)
             item = potential_helps[i][0]
+
+            print('Waiting on precondition...')
+            precondition_met = self.cp.wait_for_precondition(item[0], item[1], 20)
+            if not precondition_met:
+                break
 
             affirm = self.execute_wait_for_affirmation(item[0], item[1])
             if affirm:
@@ -659,6 +665,9 @@ class ADLSequenceModeller():
                     if not action_wait:
                         break
                 else:
+                    precondition_met = self.cp.wait_for_precondition(item[0], item[1], 20)
+                    if not precondition_met:
+                        break
                     affirm = self.execute_wait_for_affirmation(potential_helps[locked_path][i][0], potential_helps[locked_path][i][1])
                     if affirm:
                         action_wait = self.execute_wait_for_action(item[0], item[1])
@@ -848,7 +857,8 @@ class ADLSequenceModeller():
             x = threading.Thread(target=self.ros_callback_sub_help_request_thread, args=(msg,))
             x.start()
         
-        if self.glh.state():
+        glh_state = self.glh.state()
+        if glh_state:
             log = 'Redirecting to global lock handler; ' + msg.intent
             self.logger.log(log)
 
@@ -886,178 +896,4 @@ class ADLSequenceModeller():
             self.action_success = False
 
 if __name__ == '__main__':
-    ase = ADLSequenceModeller('/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)
-
-    # ase.start_sequence('train')
-    # sleep(0.2)
-    # ase.action('train', 'human', 'Kettle')
-    # sleep(0.4)
-    # ase.train_help_request('ExampleHelp')
-    # sleep(0.2)
-    # pose = RobotPose(1.0, 1.0, 3.14, -0.8, 0.4)
-    # ase.action('train', 'robot', 'OpenDrawer', pose=pose)
-    # sleep(0.3)
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'Cooking')
-
-    # ase.start_sequence('train')
-    # sleep(0.2)
-    # ase.action('train', 'human', 'Kettle')
-    # sleep(0.4)
-    # ase.train_help_request('ExampleHelp')
-    # sleep(0.2)
-    # pose = RobotPose(1.0, 1.0, 3.14, -0.8, 0.4)
-    # ase.action('train', 'robot', 'OpenDrawer', pose=pose)
-    # sleep(0.3)
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'Cooking')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'Tap')
-    # ase.action('train', 'human', 'Bin')
-    # ase.action('train', 'human', 'DrinkwareCabinet')
-    # ase.action('train', 'human', 'CutleryDrawer')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'PreparingDrink')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Bin')
-    # ase.action('train', 'human', 'Tap')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'DrinkwareCabinet')
-    # ase.action('train', 'human', 'CutleryDrawer')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'PreparingDrink')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Bin')
-    # ase.action('train', 'human', 'Tap')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'DrinkwareCabinet')
-    # ase.help_request('train', 'ExampleHelp', ['bottle'])
-    # ase.action('train', 'human', 'CutleryDrawer')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'PreparingDrink')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Tap')
-    # ase.action('train', 'human', 'Bin')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'DrinkwareCabinet')
-    # ase.help_request('train', 'ExampleHelp', ['bottle'])
-    # ase.help_request('train', 'ExampleHelp2', ['bottle'])
-    # ase.action('train', 'human', 'CutleryDrawer')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'PreparingDrink')
-
-    ase.start_sequence('predict')
-    ase.action('predict', 'human', 'Tap')
-    ase.action('predict', 'human', 'Bin')
-    ase.action('predict', 'human', 'Kettle')
-    ase.action('predict', 'human', 'DrinkwareCabinet')
-    # ase.stop_sequence('predict')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Bin')
-    # ase.action('train', 'human', 'Tap')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'CutleryDrawer')
-    # ase.action('train', 'human', 'DrinkwareCabinet')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'PreparingDrink')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'FoodCabinet')
-    # ase.action('train', 'human', 'MiscCabinet')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'Cooking')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'FoodCabinet')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'Fridge')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'Cooking')
-
-    # ase.start_sequence('predict')
-    # ase.action('predict', 'human', 'FoodCabinet')
-    # ase.action('predict', 'human', 'Fridge')
-    # ase.action('predict', 'human', 'Bin')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'Cooking')
-
-    # ase.start_sequence('predict')
-    # ase.action('predict', 'human', 'Bin')
-    # ase.action('predict', 'human', 'Tap')
-    # ase.action('predict', 'human', 'CutleryDrawer')
-    
-    # ase.start_sequence('predict')
-    # ase.action('predict', 'human', 'Bin')
-    # ase.action('predict', 'human', 'Tap')
-    # ase.action('predict', 'human', 'CutleryDrawer')
-
-    # ase.start_sequence('predict')
-    # ase.action('predict', 'human', 'Bin', prediction='PreparingDrink')
-    # ase.action('predict', 'human', 'Tap', prediction='PreparingDrink')
-    # ase.action('predict', 'human', 'CutleryDrawer', prediction='PreparingDrink')
-
-    # ase.start_sequence('predict')
-    # ase.action('predict', 'human', 'Bin')
-    # ase.action('predict', 'human', 'Tap')
-    # ase.action('predict', 'human', 'Kettle', prediction='PreparingDrink')
-
-    # ase.start_sequence('predict')
-    # ase.action('predict', 'human', 'Kettle')
-    # ase.action('predict', 'human', 'FoodCabinet')
-
-    # ase.start_sequence('predict')
-    # ase.action('predict', 'human', 'FoodCabinet', prediction='Cooking')
-    # ase.action('predict', 'human', 'Fridge', prediction='Cooking')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Tap')
-    # ase.action('train', 'human', 'Bin')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'DrinkwareCabinet')
-    # ase.action('train', 'human', 'CutleryDrawer')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'PreparingDrink')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'Tap')
-    # ase.action('train', 'human', 'Bin')
-    # ase.action('train', 'human', 'DinnerwareCabinet')
-    # ase.action('train', 'human', 'DrinkwareCabinet')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'PreparingDrink')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'Tap')
-    # ase.action('train', 'human', 'DrinkwareCabinet')
-    # ase.action('train', 'human', 'CutleryDrawer')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'PreparingDrink')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'human', 'Kettle')
-    # ase.action('train', 'human', 'Tap')
-    # ase.action('train', 'human', 'DrinkwareCabinet')
-    # ase.action('train', 'human', 'CutleryDrawer')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'PreparingDrink')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'event', 'event_name')
-    # ase.action('train', 'action', 'action_name')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'Working')
-
-    # ase.start_sequence('train')
-    # ase.action('train', 'event', 'event_name')
-    # ase.action('train', 'action', 'action_name')
-    # ase.stop_sequence('train')
-    # ase.label_sequence('train', 'Sleeping')
+    asm = ADLSequenceModeller('/home/ronsm/catkin_ws/src/ronsm_robot_har_packages/robot_har_mln', reset=False)

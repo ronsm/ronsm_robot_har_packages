@@ -4,6 +4,7 @@
 import rospy
 from hsrb_interface import geometry
 import actionlib
+import tf
 
 # internal classes
 from log import Log
@@ -22,7 +23,7 @@ from std_srvs.srv import Empty
 GRASP_FORCE = 0.2
 MARKER_TF = 'ar_marker/2000'
 HAND_TF = 'hand_palm_link'
-MARKER_LOCATION = (-0.1079, 1.1827, -0.0485)
+MARKER_LOCATION = (-0.1079, 1.1827, 0.75)
 
 MARKER_TO_HAND = geometry.pose(z=-0.02, ek=-1.57)
 HAND_UP = geometry.pose(x=0.1)
@@ -55,7 +56,6 @@ class PickMarker():
 
     def request(self):
         success = True
-        stage = 0
 
         if not self.marker_recognition_enabled:
             self.enable_marker_recognition()
@@ -71,7 +71,6 @@ class PickMarker():
             except:
                 self.logger.log_warn('Unable to move to neutral.')
                 success = False
-                stage = 0
 
         if success:
             try:
@@ -80,19 +79,27 @@ class PickMarker():
             except:
                 self.logger.log_warn('Fail to initialize.')
                 success = False
-                stage = 1
 
-        # if success:
-        #     try:
-        #         self.logger.log('Moving to where the marker can be seen...')
-        #         result = self.move(MARKER_LOCATION[0], MARKER_LOCATION[1], MARKER_LOCATION[2])
-        #         if not result:
-        #             success = True
-        #             stage = 2
-        #     except:
-        #         self.logger.log_warn('Failed to move to the position.')
-        #         success = True
-        #         stage = 2
+        if success:
+            try:
+                self.logger.log('Moving to where the marker can be seen...')
+                result = self.move(MARKER_LOCATION[0], MARKER_LOCATION[1], MARKER_LOCATION[2])
+                if not result:
+                    success = True
+            except:
+                self.logger.log_warn('Failed to move to the position.')
+                success = True
+
+        if success:
+            try:
+                self.logger.log('Moving to neutral...')
+                self.body.move_to_neutral()
+                self.body.move_to_joint_positions({'arm_lift_joint' : 0.18})
+            except:
+                self.logger.log_warn('Unable to move to neutral.')
+                success = False
+
+        rospy.sleep(2.0)
 
         if success:
             try:
@@ -112,7 +119,14 @@ class PickMarker():
             except:
                 self.logger.log_warn('Failed to grasp.')
                 success = False
-                stage = 3
+
+        if success:
+            try:
+                self.logger.log('Moving to neutral...')
+                self.body.move_to_neutral()
+            except:
+                self.logger.log_warn('Unable to move to neutral.')
+                success = False
 
         if self.marker_recognition_enabled:
             self.disable_marker_recognition()

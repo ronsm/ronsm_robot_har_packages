@@ -617,7 +617,7 @@ class Main():
             resp = 'OK. Added: (' + etype + ',' + evidence + ')'
             self.last_add = etype
 
-            self.ros_move_to_room(room)
+            # self.ros_move_to_room(room)
         elif self.mode == 'predict':
             if self.valid_pred(evidence, etype):
                 self.add_pred(evidence, etype, room)
@@ -625,7 +625,7 @@ class Main():
                 resp = 'OK. Added: (' + etype + ',' + evidence + ')'
                 self.last_add = etype
 
-                self.ros_move_to_room(room)
+                # self.ros_move_to_room(room)
         else:
             resp = 'Invalid evidence type or invalid predicate. Valid types are: event.'
 
