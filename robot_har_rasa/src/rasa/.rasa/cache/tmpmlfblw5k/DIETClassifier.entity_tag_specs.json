@@ -1,0 +1,36 @@
+[
+  {
+    "tag_name": "entity",
+    "ids_to_tags": {
+      "1": "B-obejct",
+      "2": "I-obejct",
+      "3": "L-obejct",
+      "4": "U-obejct",
+      "5": "B-object",
+      "6": "I-object",
+      "7": "L-object",
+      "8": "U-object",
+      "9": "B-room",
+      "10": "I-room",
+      "11": "L-room",
+      "12": "U-room",
+      "0": "O"
+    },
+    "tags_to_ids": {
+      "B-obejct": 1,
+      "I-obejct": 2,
+      "L-obejct": 3,
+      "U-obejct": 4,
+      "B-object": 5,
+      "I-object": 6,
+      "L-object": 7,
+      "U-object": 8,
+      "B-room": 9,
+      "I-room": 10,
+      "L-room": 11,
+      "U-room": 12,
+      "O": 0
+    },
+    "num_tags": 13
+  }
+]

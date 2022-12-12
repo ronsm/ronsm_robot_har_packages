@@ -110,6 +110,18 @@ nlu:
     - make sure that you watch isa while she does activity
     - when isa is activity can you watch her for me
 
+- intent: intent_look_at_workspace
+  examples: |
+     - i want you to look at the workspace
+     - come to the workspace
+     - move closer to the workspace
+     - move to the workspace
+     - come over here to the workspace
+     - come to the worktop
+     - come closer
+     - look at the worktop
+     - can you come over here
+
 # asking for help
 
 - intent: intent_pick_up_object

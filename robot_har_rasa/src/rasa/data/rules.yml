@@ -46,6 +46,11 @@ rules:
   - intent: intent_create_adl_monitoring_rule
   - action: utter_create_adl_monitoring_rule
 
+- rule: Look at workspace
+  steps:
+  - intent: intent_look_at_workspace
+  - action: action_simple_ros_command
+
 - rule: Rule for intent_pick_up_object
   steps:
   - intent: intent_pick_up_object
