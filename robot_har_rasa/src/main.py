@@ -11,6 +11,7 @@ from queue import Queue
 # internal classes
 from log import Log
 from input_output import InputOutput
+from csv_tools import CSVTools
 
 # standard messages
 from std_msgs.msg import String
@@ -23,7 +24,7 @@ RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 RASA_TRACKER = 'http://localhost:5005/conversations/robot_har_rasa/tracker'
 RASA_MIN_CONF = 0.75
 OUTPUT = 'ROBOT'
-INPUT = 'REQUEST_ONLY' # MICROPHONE, KEYBOARD, or REQUEST_ONLY
+INPUT = 'KEYBOARD' # MICROPHONE, KEYBOARD, or REQUEST_ONLY
 
 class Main():
     def __init__(self):
@@ -44,6 +45,7 @@ class Main():
 
         # set up classes
         self.io = InputOutput(self.rel_path, OUTPUT)
+        self.csv_tool = CSVTools()
 
         # ready
         self.logger.log_great('Ready.')
@@ -114,6 +116,8 @@ class Main():
     # RASA interaction
 
     def send_to_rasa(self, utterance):
+        self.csv_tool.save_utterance(utterance)
+
         request = {'message': utterance, 'sender': 'robot_har_rasa'}
 
         response = requests.post(RASA_WEBHOOK, json = request)
