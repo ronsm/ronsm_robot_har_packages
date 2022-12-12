@@ -101,9 +101,19 @@ class Main():
                     self.intent_hand_over()
                 else:
                     self.log_intent_missing_args(intent)
+            # elif intent == 'intent_register_marker':
+            #     if len(args) == 0:
+            #         self.marker_align.request_register_marker()
+            #     else:
+            #         self.log_intent_missing_args(intent)
             elif intent == 'intent_register_marker':
                 if len(args) == 0:
-                    self.marker_align.request_register_marker()
+                    self.pick_marker.move_to_workspace()
+                else:
+                    self.log_intent_missing_args(intent)
+            elif intent == 'intent_look_at_workspace':
+                if len(args) == 0:
+                    self.pick_marker.move_to_workspace()
                 else:
                     self.log_intent_missing_args(intent)
             elif intent == 'intent_look_at_marker':

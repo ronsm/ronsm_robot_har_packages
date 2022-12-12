@@ -14,6 +14,7 @@ from geometry_msgs.msg import Point, PoseStamped, Quaternion
 from actionlib_msgs.msg import GoalStatus
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from std_srvs.srv import Empty
+from std_msgs.msg import Bool
 
 # custom messages
 # none
@@ -36,6 +37,8 @@ class PickMarker():
         self.logger = Log(self.id)
 
         # set up ROS
+        self.ros_pub_aligned = rospy.Publisher('/robot_har_help_service/marker_align/aligned', Bool, queue_size=10)
+
         self.ros_ac_move_base = actionlib.SimpleActionClient('/move_base/move', MoveBaseAction)
         self.ros_ac_move_base.wait_for_server()
 
@@ -176,3 +179,38 @@ class PickMarker():
             self.marker_recognition_enabled = False
         except rospy.ServiceException as e:
                 self.logger.log_warn('Service call failed to /marker/stop_recognition.')
+
+    def move_to_workspace(self):
+        success = True
+
+        if success:
+            try:
+                self.logger.log('Moving to neutral...')
+                self.body.move_to_neutral()
+            except:
+                self.logger.log_warn('Unable to move to neutral.')
+                success = False
+
+        try:
+            self.logger.log('Moving to where the workspace position...')
+            result = self.move(MARKER_LOCATION[0], MARKER_LOCATION[1], MARKER_LOCATION[2])
+            if not result:
+                success = True
+        except:
+            self.logger.log_warn('Failed to move to the position.')
+            success = True
+
+        if success:
+            try:
+                self.logger.log('Moving to neutral...')
+                self.body.move_to_neutral()
+            except:
+                self.logger.log_warn('Unable to move to neutral.')
+                success = False
+
+        if success:
+            msg = Bool()
+            msg.data = True
+            self.ros_pub_aligned.publish(msg)
+
+        return success
