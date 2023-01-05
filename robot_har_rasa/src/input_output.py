@@ -126,8 +126,11 @@ class InputOutput(object):
             log = 'Adjusting for ambient noise...'
             self.logger.log(log)
             self.r.adjust_for_ambient_noise(source)
+
             path = self.rel_path + '/src/sounds/tone_beep.wav'
             playsound(path)
+
+            # Prints out the result of executing the action
             log = 'Say something...'
             self.logger.log(log)
             try:

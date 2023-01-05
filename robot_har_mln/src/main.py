@@ -536,7 +536,7 @@ class Main():
         for adl in adls:
             predicate = 'class(S,' + adl + ')'
             queries.append(predicate)
-
+            
         probs = []
         for q in queries:
             try:
