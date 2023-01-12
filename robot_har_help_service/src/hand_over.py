@@ -40,7 +40,7 @@ class HandOver():
             self.logger.log('Handing over object...')
             self.body.move_to_joint_positions({'arm_flex_joint' : -0.6, 'arm_lift_joint' : 0.25, 'arm_roll_joint' : 0.5, 'wrist_flex_joint' : -1.0})
             self.speak.request('Here you go!')
-            self.grip.command(1.0)
+            # self.grip.command(1.0)
             rospy.sleep(5)
             self.body.move_to_neutral()
             return True

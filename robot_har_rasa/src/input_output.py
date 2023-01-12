@@ -53,8 +53,10 @@ class InputOutput(object):
             rospy.logerr(e)
             sys.exit(1)
 
+        self.logger.log('Loading Whisper model...')
         self.r = sr.Recognizer()
-        sr.Microphone.list_microphone_names()
+        self.r.dynamic_energy_threshold = False
+        self.r.energy_threshold = 2000
         self.audio_queue = Queue()
 
         self.logger.log_great('Ready.')
@@ -88,9 +90,14 @@ class InputOutput(object):
         with sr.Microphone() as source:
             try:
                 while True and not rospy.is_shutdown():
-                    self.r.adjust_for_ambient_noise(source)
                     self.logger.log('Listening...')
-                    self.audio_queue.put(self.r.listen(source, phrase_time_limit=5))
+                    timed_out = False
+                    try:
+                        audio = self.r.listen(source, timeout=1)
+                    except sr.WaitTimeoutError:
+                        timed_out = True
+                    if not timed_out:
+                        self.audio_queue.put(audio)
             except KeyboardInterrupt:
                 pass
 
@@ -99,59 +106,49 @@ class InputOutput(object):
         recognize_thread.join()
 
     def recognize_worker(self):
-        print('Started worker thread.')
+        self.logger.log('Started worker thread.')
         while True:
             audio = self.audio_queue.get()
             if audio is None:
                 break
-            try:
-                utterance = self.r.recognize_google(audio)
-                print("Utterance:", utterance)
-                splits = utterance.split()
-                if splits[0] == 'google' or splits[0] == 'Google':
+
+            utterance = self.r.recognize_whisper(audio, language='English', model='base')
+            log = 'Utterance:' + utterance
+            self.logger.log(log)
+            words = utterance.split()
+            if len(words) > 0:
+                hotword = words[0]
+                hotword = hotword.lower()
+                hotword = hotword[0:5]
+                if hotword == 'david':
                     utterance = utterance.lstrip('google')
                     msg = String()
                     msg.data = utterance
                     self.ros_pub_rasa_utterance_internal.publish(msg)
-            except sr.UnknownValueError:
-                print("Could not understand audio.")
-            except sr.RequestError as e:
-                print("Could not request results from Google Speech Recognition service; {0}".format(e))
 
-            print('Terminated worker thread.')
+            self.logger.log('Terminated worker thread.')
             self.audio_queue.task_done()
             
     def listen_once(self):
         with sr.Microphone() as source:
-            log = 'Adjusting for ambient noise...'
-            self.logger.log(log)
-            self.r.adjust_for_ambient_noise(source)
+            self.logger.log('Adjusting for ambient noise...')
 
             path = self.rel_path + '/src/sounds/tone_beep.wav'
             playsound(path)
 
-            # Prints out the result of executing the action
-            log = 'Say something...'
-            self.logger.log(log)
+            self.logger.log('Listening...')
             try:
-                audio = self.r.listen(source, timeout=10, phrase_time_limit=5)
-                log = 'Done listening.'
-                self.logger.log(log)
+                audio = self.r.listen(source, timeout=1)
             except sr.WaitTimeoutError:
-                msg = 'No audio detected.'
-                self.logger.log_warn(msg)
+                self.logger.log_warn('No audio detected.')
         try:
-            log = 'Sending audio to Google Cloud ASR for processing...'
+            # utterance = self.r.recognize_google_cloud(audio, language='en-GB')
+            utterance = self.r.recognize_whisper(audio, language='English', model='base')
+            log = 'Utterance:' + utterance
             self.logger.log(log)
-            result = self.r.recognize_google_cloud(audio)
-            log = 'Google Cloud ASR thinks you said: ' + result
-            self.logger.log(log)
-            return result
+            return utterance
         except sr.UnknownValueError:
-            log = 'Google Cloud ASR could not understand audio.'
-            self.logger.log_warn(log)
-        except sr.RequestError as e:
-            print("Could not request results from Google Cloud ASR service: {0}".format(e))
+            self.logger.log_warn('Could not understand audio.')
 
 if __name__ == '__main__':
     io = InputOutput()

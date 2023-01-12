@@ -24,7 +24,7 @@ RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 RASA_TRACKER = 'http://localhost:5005/conversations/robot_har_rasa/tracker'
 RASA_MIN_CONF = 0.75
 OUTPUT = 'ROBOT'
-INPUT = 'REQUEST_ONLY' # MICROPHONE, KEYBOARD, or REQUEST_ONLY
+INPUT = 'MICROPHONE' # MICROPHONE, KEYBOARD, or REQUEST_ONLY
 
 class Main():
     def __init__(self):

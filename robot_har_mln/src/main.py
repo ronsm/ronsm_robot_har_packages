@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import os
+import sys
 import threading
 import copy
 from pracmln import MLN, Database, MLNQuery
@@ -36,8 +37,6 @@ import ronsm_messages.msg
 
 etypes = ['event']
 
-RESET = False
-
 MIN_SEGMENT_DEPTH = 2
 MIN_SEGMENT_CONF = 0.5
 
@@ -45,13 +44,13 @@ class Main():
     _ros_reason_feedback = ronsm_messages.msg.har_reasonFeedback()
     _ros_reason_result = ronsm_messages.msg.har_reasonResult()
     
-    def __init__(self):
+    def __init__(self, reset):
         self.id = 'main'
         self.logger = Log(self.id)
 
         self.logger.startup_msg()
 
-        if RESET:
+        if reset:
             self.logger.log_warn('WARNNG: The global reset flag is set to true. This will reset the HAR system and clear the default evidence database.')
             if input('Are you sure you wish to continue? (y/n) ~> ') != 'y':
                 self.logger.log_warn('Exiting...')
@@ -73,7 +72,7 @@ class Main():
         self.qs = QuerySelection()
         self.tdch = TrainDBConsistencyHelper(self.rel_path)
         self.kdh = KnownDomainsHelper(self.rel_path)
-        if RESET:
+        if reset:
             self.ah = ADLHelper(self.rel_path, reset=True)
             self.asm = ADLSequenceModeller(self.rel_path, reset=True)
         else:
@@ -82,7 +81,7 @@ class Main():
         self.asm.start_sequence('predict')
 
         # Reset Global DB
-        if RESET:
+        if reset:
             path = self.rel_path + '/src/DBs/global_DB_s.txt'
             try:
                 os.remove(path)
@@ -122,7 +121,7 @@ class Main():
         self.init_groundings()
         self.skip_train = False
         self.load_global_train_dbs()
-        if RESET:
+        if reset:
             self.logger.log_warn('WARNING: The MLNs have not been trained. Predictions will be non-sensical until training data has been provided.')
         else:
             if not self.skip_train:
@@ -150,7 +149,7 @@ class Main():
 
         self.logger.log_great('Ready.')
 
-        if RESET:
+        if reset:
             self.logger.log_warn('Training must be performed while started in normal mode (RESET = False). Exiting...')
             exit()
 
@@ -310,10 +309,11 @@ class Main():
         self.reset_working_memory()
 
     def ros_add_rule_start_callback(self, msg):
-        self.mode = 'train'
-        self.asm.start_sequence('train')
-        self.logger.log('Entered training mode.')
-
+        if self.mode != 'train':
+            self.mode = 'train'
+            self.asm.start_sequence('train')
+            self.logger.log('Entered training mode.')
+            
     def ros_add_rule_stop_callback(self, msg):
         self.mode = 'predict'
         self.logger.log('Entered predict mode.')
@@ -915,7 +915,14 @@ class Main():
             return False
 
 if __name__ == '__main__':
-    m = Main()
+    print(sys.argv)
+    reset = False
+
+    if len(sys.argv) > 1:
+        if sys.argv[1] == 'reset':
+            reset = True
+
+    m = Main(reset)
 
     app = Flask(__name__)
     CORS(app)
