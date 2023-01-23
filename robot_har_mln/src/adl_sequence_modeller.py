@@ -27,11 +27,10 @@ from adl_helper import ADLHelper
 from log import Log
 from object_pool import ObjectPool
 from global_lock_helper import GlobalLockHelper
-from check_preconditions import CheckPreconditions
 
 from std_msgs.msg import Bool, String
 from geometry_msgs.msg import PoseStamped
-from ronsm_messages.msg import har_percepts, har_percept, dm_intent
+from ronsm_messages.msg import har_percepts, har_percept, dm_intent, dm_intent_array
 from geometry_msgs.msg import PoseStamped, Point, Quaternion
 from actionlib_msgs.msg import GoalStatus
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
@@ -95,7 +94,6 @@ class ADLSequenceModeller():
         self.adlhh = ADLHelper(self.rel_path, reset=False)
         self.op = ObjectPool()
         self.glh = GlobalLockHelper()
-        self.cp = CheckPreconditions()
 
         self.block_entries = False
 
@@ -115,9 +113,9 @@ class ADLSequenceModeller():
 
         # ROS Publishers
         self.pub_adjust = rospy.Publisher('/robot_har_help_service/marker_align/adjust', PoseStamped, queue_size=10)
-        self.pub_offer_help = rospy.Publisher('/robot_har_mln/asm/offer_help', dm_intent, queue_size=10)
         self.pub_intent_bus = rospy.Publisher('/robot_har_rasa_core/intent_bus', dm_intent, queue_size=10)
         self.pub_workspace_pose = rospy.Publisher('/robot_har_help_service/move_to_room/workspace_pose', String, queue_size=10)
+        self.pub_intent_array = rospy.Publisher('/robot_har_help_service/intent_array', dm_intent_array, queue_size=10)
 
         # ROS AS Clients
         self.ros_ac_move_base = actionlib.SimpleActionClient('/move_base/move', MoveBaseAction)
@@ -214,6 +212,30 @@ class ADLSequenceModeller():
         self.train_stop_sequence()
 
     def help_request(self, mode, help_type, help_args):
+        # should match those in robot_har_rasa (mostly)
+        if help_type == 'intent_pick_up_object':
+            if len(help_args) != 1:
+                return
+        elif help_type == 'intent_go_to_room':
+            if len(help_args) != 1:
+                return
+        elif help_type == 'intent_move_to_pose':
+            if len(help_args) != 0:
+                return
+        elif help_type == 'intent_hand_over':
+            pass
+        elif help_type == 'intent_register_marker':
+            if len(help_args) != 0:
+                return
+        elif help_type == 'intent_look_at_workspace':
+            if len(help_args) != 0:
+                return
+        elif help_type == 'intent_look_at_marker':
+            if len(help_args) != 0:
+                return
+        else:
+            return
+
         self.train_help_request(help_type, help_args)
 
     def label_sequence(self, mode, adl):
@@ -519,50 +541,6 @@ class ADLSequenceModeller():
         x = threading.Thread(target=self.execute_state_thread, args=())
         x.start()
 
-    def execute_wait_for_affirmation(self, intent, args):
-        affirm = False
-        response = False
-
-        self.glh.lock()
-        
-        tries = 0
-        while (not response) and (tries < MAX_TRIES_ACCEPT_REJECT):
-            msg = dm_intent()
-            msg.intent = intent
-            msg.args = args
-            msg.pose = PoseStamped()
-            self.pub_offer_help.publish(msg)
-
-            wait = 0
-            while (self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
-                self.logger.log('Waiting for response...')
-                wait = wait + 1
-                rospy.sleep(1)
-
-            if wait == MAX_WAIT_ACCEPT_REJECT:
-                log = 'No valid response to help request received in time.'
-                self.logger.log_warn(log)
-
-            if self.accept_reject_help in accept_reject_intents:
-                if self.accept_reject_help == 'intent_wait':
-                    tries = tries - 1
-                    rospy.sleep(10)
-                else:
-                    response = True
-
-            tries = tries + 1
-
-        if response:
-            if self.accept_reject_help == 'intent_accept':
-                affirm = True
-            else:
-                affirm = False
-
-        self.glh.unlock()
-
-        self.accept_reject_help = None
-        return affirm
-
     def execute_wait_for_action(self, intent, action, pose=None):
         msg = dm_intent()
         msg.intent = intent
@@ -601,20 +579,6 @@ class ADLSequenceModeller():
             if(not self.state_estimate_success_s1):
                 return
 
-        # what percepts are we expecting?
-        expected_percepts = []
-        for state in self.state_current_s1:
-            if state.state.percepts != None:
-                expected_percepts = expected_percepts + state.state.percepts
-
-        if self.s2_active and self.state_estimate_success_s2:
-            for state in self.state_current_s2:
-                if state.state.percepts != None:
-                    expected_percepts = expected_percepts + state.state.percepts
-        
-        log = 'Expected percepts: ' + str(expected_percepts)
-        self.logger.log(log)
-
         # does the robot need to move?
         # if self.state_current_s1[0].estimate == 'exact':
         if self.state_current_s1[0].state.manual_alignment:
@@ -635,46 +599,25 @@ class ADLSequenceModeller():
                 potential_helps = potential_helps + state.state.help.help_types
 
         if self.s2_active and self.state_estimate_success_s2:
-            for state in self.state_current_s2:
+            for state in self.state_current_ls2:
                 if state.state.help != None:
-                    potential_helps = potential_helps + state.state.help.help_types
+                    potential_helps = potential_helps + state.state.help.hep_types
 
         log = 'Potential help: ' + str(potential_helps)
         self.logger.log(log)            
 
-        locked_path = -1
-        for i in range(0, len(potential_helps)):
-            item = potential_helps[i][0]
-
-            print('Waiting on precondition...')
-            precondition_met = self.cp.wait_for_precondition(item[0], item[1], 20)
-            if not precondition_met:
-                break
-
-            affirm = self.execute_wait_for_affirmation(item[0], item[1])
-            if affirm:
-                locked_path = i
-            
-            if locked_path != -1:
-                break
+        temp = []
+        for i in range(0, len(potential_helps[0])):
+            msg = dm_intent()
+            msg.intent = potential_helps[0][i][0]
+            msg.args = potential_helps[0][i][1]
+            msg.pose = PoseStamped()
+            temp.append(msg)
         
-        if locked_path != -1:
-            for i in range(0, len(potential_helps[locked_path])):
-                if i == 0:
-                    action_wait = self.execute_wait_for_action(item[0], item[1])
-                    if not action_wait:
-                        break
-                else:
-                    precondition_met = self.cp.wait_for_precondition(item[0], item[1], 20)
-                    if not precondition_met:
-                        break
-                    affirm = self.execute_wait_for_affirmation(potential_helps[locked_path][i][0], potential_helps[locked_path][i][1])
-                    if affirm:
-                        action_wait = self.execute_wait_for_action(item[0], item[1])
-                        if not action_wait:
-                            break
-                    else:
-                        break
+        msg = dm_intent_array()
+        msg.intents = temp
+
+        self.pub_intent_array.publish(msg)
 
         # has too much time passed?
         # start a thread that monitors time elapsed and does something

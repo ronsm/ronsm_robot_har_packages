@@ -15,15 +15,23 @@ from move_to_pose import MoveToPose
 from marker_align import MarkerAlign
 from hand_over import HandOver
 from collision_array import CollisionArray
+from global_lock_helper import GlobalLockHelper
+from check_preconditions import CheckPreconditions
 
 # standard messages
 from std_msgs.msg import String, Bool
+from geometry_msgs.msg import PoseStamped
 
 # custom messages
-from ronsm_messages.msg import dm_intent
+from ronsm_messages.msg import dm_intent, dm_intent_array
 
 # constants and parameters
-# none
+help_intents = ['intent_pick_up_object', 'intent_go_to_room', 'intent_hand_over', 'intent_align_workspace']
+accept_reject_intents = ['intent_accept', 'intent_reject', 'intent_wait']
+
+MAX_WAIT_ACCEPT_REJECT = 20
+MAX_WAIT_ACTION_END = 60
+MAX_TRIES_ACCEPT_REJECT = 3
 
 class Main():
     def __init__(self):
@@ -36,8 +44,11 @@ class Main():
         rospy.init_node('robot_har_help_service')
 
         self.ros_sub_intent_bus = rospy.Subscriber('/robot_har_rasa_core/intent_bus', dm_intent, callback=self.ros_callback_intent_bus)
-        self.ros_pub_action_end = rospy.Publisher('/robot_har_rasa_core/action_end', String, queue_size=10)
+        self.ros_sub_intent_array = rospy.Subscriber('/robot_har_help_service/intent_array', dm_intent_array, callback=self.ros_callback_intent_array)
         self.ros_sub_global_lock = rospy.Subscriber('/ronsm_global_lock', Bool, callback=self.ros_callback_global_lock)
+
+        self.pub_offer_help = rospy.Publisher('/robot_har_rasa/offer_help', dm_intent, queue_size=10)
+        self.ros_pub_action_end = rospy.Publisher('/robot_har_rasa_core/action_end', String, queue_size=10)
 
         # set up HSR
         self.robot = Robot()
@@ -52,6 +63,8 @@ class Main():
             exit(0)
 
         # set up classes
+        self.glh = GlobalLockHelper()
+        self.cp = CheckPreconditions()
         self.speak = Speak()
         self.object_to_transform = ObjectToTF(self.speak)
         self.pick_from_tf = PickFromTF(self.speak, self.base, self.body, self.grip)
@@ -67,6 +80,7 @@ class Main():
 
         # instance variables
         self.global_lock = False
+        self.accept_reject_help = None
 
         # ready       
         self.logger.log_great('Ready.')
@@ -76,89 +90,79 @@ class Main():
     # core logic
 
     def process_intent(self, intent, args, pose):
-        if not self.global_lock:
-            log = 'Processing intent: ' + intent
-            self.logger.log(log)
+        log = 'Processing intent: ' + intent
+        self.logger.log(log)
 
-            # should match those in robot_har_rasa (mostly)
-            if intent == 'intent_pick_up_object':
-                if len(args) == 1:
-                    self.intent_pick_up_object(target=args[0])
-                else:
-                    self.log_intent_missing_args(intent)
-            elif intent == 'intent_go_to_room':
-                if len(args) == 1:
-                    self.intent_go_to_room(target=args[0])
-                else:
-                    self.log_intent_missing_args(intent)
-            elif intent == 'intent_move_to_pose':
-                if len(args) == 0:
-                    self.intent_move_to_pose(target=pose)
-                else:
-                    self.log_intent_missing_args(intent)
-            elif intent == 'intent_hand_over':
-                if len(args) == 0:
-                    self.intent_hand_over()
-                else:
-                    self.log_intent_missing_args(intent)
-            # elif intent == 'intent_register_marker':
-            #     if len(args) == 0:
-            #         self.marker_align.request_register_marker()
-            #     else:
-            #         self.log_intent_missing_args(intent)
-            elif intent == 'intent_register_marker':
-                if len(args) == 0:
-                    self.pick_marker.move_to_workspace()
-                else:
-                    self.log_intent_missing_args(intent)
-            elif intent == 'intent_look_at_workspace':
-                if len(args) == 0:
-                    self.pick_marker.move_to_workspace()
-                else:
-                    self.log_intent_missing_args(intent)
-            elif intent == 'intent_look_at_marker':
-                if len(args) == 0:
-                    self.marker_align.request_look_at_marker()
-                else:
-                    self.log_intent_missing_args(intent)
-            elif intent == 'intent_test_speech':
-                self.speak.request('This is a test of the speech.')
-                self.speak.request('This sentence should not interrupt the previous one.')
+        # should match those in robot_har_rasa (mostly)
+        if intent == 'intent_pick_up_object':
+            if len(args) == 1:
+                self.intent_pick_up_object(target=args[0])
             else:
-                log = 'No service handler available for intent: ' + intent
-                self.logger.log_warn(log)
+                self.log_intent_missing_args(intent)
+        elif intent == 'intent_go_to_room':
+            if len(args) == 1:
+                self.intent_go_to_room(target=args[0])
+            else:
+                self.log_intent_missing_args(intent)
+        elif intent == 'intent_move_to_pose':
+            if len(args) == 0:
+                self.intent_move_to_pose(target=pose)
+            else:
+                self.log_intent_missing_args(intent)
+        elif intent == 'intent_hand_over':
+            if len(args) == 0:
+                self.intent_hand_over()
+            else:
+                self.log_intent_missing_args(intent)
+        # elif intent == 'intent_register_marker':
+        #     if len(args) == 0:
+        #         self.marker_align.request_register_marker()
+        #     else:
+        #         self.log_intent_missing_args(intent)
+        elif intent == 'intent_register_marker':
+            if len(args) == 0:
+                self.pick_marker.move_to_workspace()
+            else:
+                self.log_intent_missing_args(intent)
+        elif intent == 'intent_look_at_workspace':
+            if len(args) == 0:
+                self.pick_marker.move_to_workspace()
+            else:
+                self.log_intent_missing_args(intent)
+        elif intent == 'intent_look_at_marker':
+            if len(args) == 0:
+                self.marker_align.request_look_at_marker()
+            else:
+                self.log_intent_missing_args(intent)
+        elif intent == 'intent_test_speech':
+            self.speak.request('This is a test of the speech.')
+            self.speak.request('This sentence should not interrupt the previous one.')
         else:
-            log = 'Global lock is active, will not process intents.'
+            log = 'No service handler available for intent: ' + intent
             self.logger.log_warn(log)
+
+    def process_intent_array(self, msg):
+        for intent in msg.intents:
+            affirm = self.execute_wait_for_affirmation(intent.intent, intent.args)
+            if affirm:
+                self.process_intent(intent.intent, intent.args, intent.pose)
 
     # callbacks
 
     def ros_callback_intent_bus(self, msg):
         self.process_intent(msg.intent, msg.args, msg.pose)
 
+        glh_state = self.glh.state()
+        if glh_state:
+            self.accept_reject_help = msg.intent
+
+    def ros_callback_intent_array(self, msg):
+        self.process_intent_array(msg)
+
     def ros_callback_global_lock(self, msg):
         self.global_lock = msg.data
 
     # help services
-
-    # def intent_pick_up_object(self, target):
-    #     success = self.object_to_transform.request(target)
-    #     if not success:
-    #         say = 'Sorry, I was unable to detect the ' + target
-    #         self.speak.request(say)
-    #         self.log_action_failure()
-    #         return
-            
-    #     success = self.pick_from_tf.request()
-    #     if not success:
-    #         say = 'Sorry, I was unable to pick up the ' + target
-    #         self.speak.request(say)
-    #         self.log_action_failure()
-    #         return
-
-    #     say = 'Ok, I have picked up the ' + target 
-    #     self.speak.request(say)
-    #     self.log_action_success()
 
     def intent_pick_up_object(self, target):
         say = 'Ok, I will try to pick up the ' + target
@@ -230,11 +234,50 @@ class Main():
         msg.data = 'failure'
         self.ros_pub_action_end.publish(msg)
 
-        # intent_pick_up_object
-        # obejct = msg.args[0]
-        # success = self.ott.request(object)
-        # if success: self.pft.request()
-        # if success: ok, else not ok
+    # async waits
+    def execute_wait_for_affirmation(self, intent, args):
+        affirm = False
+        response = False
+
+        self.glh.lock()
+        
+        tries = 0
+        while (not response) and (tries < MAX_TRIES_ACCEPT_REJECT):
+            msg = dm_intent()
+            msg.intent = intent
+            msg.args = args
+            msg.pose = PoseStamped()
+            self.pub_offer_help.publish(msg)
+
+            wait = 0
+            while (self.accept_reject_help == None) and (wait < MAX_WAIT_ACCEPT_REJECT):
+                self.logger.log('Waiting for response...')
+                wait = wait + 1
+                rospy.sleep(1)
+
+            if wait == MAX_WAIT_ACCEPT_REJECT:
+                log = 'No valid response to help request received in time.'
+                self.logger.log_warn(log)
+
+            if self.accept_reject_help in accept_reject_intents:
+                if self.accept_reject_help == 'intent_wait':
+                    tries = tries - 1
+                    rospy.sleep(10)
+                else:
+                    response = True
+
+            tries = tries + 1
+
+        if response:
+            if self.accept_reject_help == 'intent_accept':
+                affirm = True
+            else:
+                affirm = False
+
+        self.glh.unlock()
+
+        self.accept_reject_help = None
+        return affirm
 
 if __name__ == '__main__':
     m = Main()

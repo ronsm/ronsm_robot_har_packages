@@ -24,7 +24,7 @@ RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 RASA_TRACKER = 'http://localhost:5005/conversations/robot_har_rasa/tracker'
 RASA_MIN_CONF = 0.75
 OUTPUT = 'ROBOT'
-INPUT = 'MICROPHONE' # MICROPHONE, KEYBOARD, or REQUEST_ONLY
+INPUT = 'REQUEST_ONLY' # MICROPHONE, KEYBOARD, or REQUEST_ONLY
 
 class Main():
     def __init__(self):
@@ -37,7 +37,7 @@ class Main():
         rospack = rospkg.RosPack()
         self.rel_path = rospack.get_path('robot_har_rasa')
 
-        self.ros_sub_offer_help = rospy.Subscriber('/robot_har_mln/asm/offer_help', dm_intent, callback=self.ros_callback_offer_help)
+        self.ros_sub_offer_help = rospy.Subscriber('/robot_har_rasa/offer_help', dm_intent, callback=self.ros_callback_offer_help)
         self.ros_sub_text = rospy.Subscriber('/robot_hsr_asr/text', String, callback=self.ros_callback_text)
         self.ros_sub_rasa_utterance_internal = rospy.Subscriber('/robot_har_rasa/rasa_utterance_internal', String, callback=self.ros_callback_rasa_utterance_internal)
 

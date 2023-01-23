@@ -8,6 +8,7 @@ import tf
 
 # internal classes
 from log import Log
+from check_preconditions import CheckPreconditions
 
 # standard messages
 from geometry_msgs.msg import Point, PoseStamped, Quaternion
@@ -50,6 +51,9 @@ class PickMarker():
         self.base = base
         self.body = body
         self.grip = grip
+
+        # set up classes
+        self.cp = CheckPreconditions()
 
         # instance variables
         self.marker_recognition_enabled = False
@@ -103,6 +107,12 @@ class PickMarker():
                 success = False
 
         rospy.sleep(2.0)
+
+        if success:
+            self.logger.log('Waiting on precondition...')
+            precondition_met = self.cp.wait_for_precondition('intent_pick_up_object', ['bottle'], 20)
+            if not precondition_met:
+                success = False
 
         if success:
             try:
