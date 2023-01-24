@@ -135,6 +135,15 @@ class PickMarker():
 
         if success:
             try:
+                self.logger.log('Checking gripper has object...')
+                gripper_distance = self.grip.get_distance()
+                if gripper_distance < 0.01:
+                    success = False
+            except:
+                self.logger.log_warn('Failed to read gripper distance.')
+
+        if success:
+            try:
                 self.logger.log('Moving to neutral...')
                 self.body.move_to_neutral()
             except:

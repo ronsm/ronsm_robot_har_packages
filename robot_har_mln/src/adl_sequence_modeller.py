@@ -126,6 +126,8 @@ class ADLSequenceModeller():
         self.markov_chains_states = {}
 
         # State Estimation
+        self.state_train_count = 0
+
         self.state_current_s1 = None
         self.state_current_s2 = None
 
@@ -211,7 +213,7 @@ class ADLSequenceModeller():
     def stop_sequence(self, mode):
         self.train_stop_sequence()
 
-    def help_request(self, mode, help_type, help_args):
+    def help_request(self, mode, help_type, help_args, state_index):
         # should match those in robot_har_rasa (mostly)
         if help_type == 'intent_pick_up_object':
             if len(help_args) != 1:
@@ -236,7 +238,7 @@ class ADLSequenceModeller():
         else:
             return
 
-        self.train_help_request(help_type, help_args)
+        self.train_help_request(help_type, help_args, state_index)
 
     def label_sequence(self, mode, adl):
         self.train_label_sequence(adl)
@@ -245,6 +247,7 @@ class ADLSequenceModeller():
 
     def train_start_sequence(self):
         self.mode = 'train'
+        self.state_train_count = 0
         self.seq = []
         self.start_time = perf_counter()
         self.prev_time = 0.0
@@ -265,12 +268,13 @@ class ADLSequenceModeller():
                 self.actions), [time_object], None, False, self.current_pose, None, 1)
             self.seq.append(entry)
             self.prev_time = time
+            self.state_train_count = self.state_train_count + 1
 
-    def train_help_request(self, help_type, help_args):
-        if self.seq[-1].help == None:
-            self.seq[-1].help = HelpRequest(True, [[(help_type, help_args)]])
+    def train_help_request(self, help_type, help_args, state_index):
+        if self.seq[state_index].help == None:
+            self.seq[state_index].help = HelpRequest(True, [[(help_type, help_args)]])
         else:
-            self.seq[-1].help.help_types[0].append((help_type, help_args))
+            self.seq[state_index].help.help_types[0].append((help_type, help_args))
 
     def train_stop_sequence(self):
         if self.mode == 'predict':
@@ -285,6 +289,7 @@ class ADLSequenceModeller():
         self.seq.append(entry)
         self.mode = 'predict'
         self.update_markov_chains()
+        self.state_train_count = 0
 
     def train_label_sequence(self, adl):
         path = self.pickle_adl_path + adl + '.pickle'
@@ -606,16 +611,19 @@ class ADLSequenceModeller():
         log = 'Potential help: ' + str(potential_helps)
         self.logger.log(log)            
 
-        temp = []
-        for i in range(0, len(potential_helps[0])):
-            msg = dm_intent()
-            msg.intent = potential_helps[0][i][0]
-            msg.args = potential_helps[0][i][1]
-            msg.pose = PoseStamped()
-            temp.append(msg)
-        
-        msg = dm_intent_array()
-        msg.intents = temp
+        if len(potential_helps) > 0:
+            rospy.sleep(3)
+
+            temp = []
+            for i in range(0, len(potential_helps[0])):
+                msg = dm_intent()
+                msg.intent = potential_helps[0][i][0]
+                msg.args = potential_helps[0][i][1]
+                msg.pose = PoseStamped()
+                temp.append(msg)
+            
+            msg = dm_intent_array()
+            msg.intents = temp
 
         self.pub_intent_array.publish(msg)
 
@@ -808,6 +816,7 @@ class ADLSequenceModeller():
             self.accept_reject_help = msg.intent
 
     def ros_callback_sub_help_request_thread(self, msg):
+        state_index = copy.deepcopy(self.state_train_count)
         wait = 0
         while (not self.action_end) and (wait < MAX_WAIT_ACTION_END):
             self.logger.log('Waiting for help request to be completed...')
@@ -821,7 +830,7 @@ class ADLSequenceModeller():
             if self.action_success:
                 log = 'Help action completed successfully, action will be added to model.'
                 self.logger.log_great(log)
-                self.help_request('train', msg.intent, msg.args)
+                self.help_request('train', msg.intent, msg.args, state_index)
             else:
                 log = 'Help action failed, action will not be added to model.'
                 self.logger.log_warn(log)

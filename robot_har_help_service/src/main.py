@@ -81,6 +81,7 @@ class Main():
         # instance variables
         self.global_lock = False
         self.accept_reject_help = None
+        self.robot_busy = False
 
         # ready       
         self.logger.log_great('Ready.')
@@ -114,6 +115,11 @@ class Main():
                 self.intent_hand_over()
             else:
                 self.log_intent_missing_args(intent)
+        elif intent == 'intent_open_gripper':
+            if len(args) == 0:
+                self.intent_open_gripper()
+            else:
+                self.log_intent_missing_args(intent)
         # elif intent == 'intent_register_marker':
         #     if len(args) == 0:
         #         self.marker_align.request_register_marker()
@@ -134,27 +140,39 @@ class Main():
                 self.marker_align.request_look_at_marker()
             else:
                 self.log_intent_missing_args(intent)
-        elif intent == 'intent_test_speech':
-            self.speak.request('This is a test of the speech.')
-            self.speak.request('This sentence should not interrupt the previous one.')
         else:
             log = 'No service handler available for intent: ' + intent
             self.logger.log_warn(log)
 
     def process_intent_array(self, msg):
+        wait = 0
+        while(self.robot_busy):
+            self.logger.log('Waiting for robot to be available...')
+            if wait == MAX_WAIT_ACTION_END:
+                break
+            wait = wait + 1
+            rospy.sleep(1)
+
+        self.robot_busy = True
+        self.logger.log('Processing intents array (help to offer)...')
         for intent in msg.intents:
             affirm = self.execute_wait_for_affirmation(intent.intent, intent.args)
             if affirm:
                 self.process_intent(intent.intent, intent.args, intent.pose)
+        self.robot_busy = False
 
     # callbacks
 
     def ros_callback_intent_bus(self, msg):
-        self.process_intent(msg.intent, msg.args, msg.pose)
-
         glh_state = self.glh.state()
         if glh_state:
             self.accept_reject_help = msg.intent
+
+        # if self.robot_busy:
+        #     self.speak.request('Sorry, I am currently processing your previous request, please try again when I am done.')
+        #     return
+
+        self.process_intent(msg.intent, msg.args, msg.pose)
 
     def ros_callback_intent_array(self, msg):
         self.process_intent_array(msg)
@@ -211,6 +229,25 @@ class Main():
             return
     
         say = 'Ok, I am ready to continue.'
+        self.speak.request(say)
+        self.log_action_success()
+
+    def intent_open_gripper(self):
+        success = True
+        try:
+            say = 'Ok, I will open my gripper in 3... 2... 1... OPENING GRIPPER'
+            self.speak.request(say)
+            self.grip.set_distance(1.0)
+        except:
+            success = False
+
+        if not success:
+            say = 'Sorry, I was not able to open my gripper.'
+            self.speak.request(say)
+            self.log_action_failure()
+            return
+
+        say = 'Ok, my gripper is open.'
         self.speak.request(say)
         self.log_action_success()
 

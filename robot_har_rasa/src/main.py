@@ -7,6 +7,7 @@ import rospkg
 import requests
 from threading import Thread
 from queue import Queue
+import copy
 
 # internal classes
 from log import Log
@@ -24,7 +25,7 @@ RASA_WEBHOOK = 'http://localhost:5005/webhooks/rest/webhook'
 RASA_TRACKER = 'http://localhost:5005/conversations/robot_har_rasa/tracker'
 RASA_MIN_CONF = 0.75
 OUTPUT = 'ROBOT'
-INPUT = 'REQUEST_ONLY' # MICROPHONE, KEYBOARD, or REQUEST_ONLY
+INPUT = 'EXTERNAL' # MICROPHONE, KEYBOARD, or REQUEST_ONLY
 
 class Main():
     def __init__(self):
@@ -40,12 +41,17 @@ class Main():
         self.ros_sub_offer_help = rospy.Subscriber('/robot_har_rasa/offer_help', dm_intent, callback=self.ros_callback_offer_help)
         self.ros_sub_text = rospy.Subscriber('/robot_hsr_asr/text', String, callback=self.ros_callback_text)
         self.ros_sub_rasa_utterance_internal = rospy.Subscriber('/robot_har_rasa/rasa_utterance_internal', String, callback=self.ros_callback_rasa_utterance_internal)
+        self.ros_sub_external_input = rospy.Subscriber('/robot_har_rasa/external_input', String, callback=self.ros_callback_external_input)
 
         rospy.init_node('robot_har_rasa')
 
         # set up classes
         self.io = InputOutput(self.rel_path, OUTPUT)
         self.csv_tool = CSVTools()
+
+        # instance variables
+        self.waiting_for_external_response = False
+        self.external_response = ''
 
         # ready
         self.logger.log_great('Ready.')
@@ -54,8 +60,8 @@ class Main():
             self.spin_microphone()
         elif INPUT == 'KEYBOARD':
             self.spin_keyboard()
-        elif INPUT == 'REQUEST_ONLY':
-            self.spin_request_only()
+        elif INPUT == 'EXTERNAL':
+            self.spin_external_only()
         else:
             self.logger.log_warn('Invalid input mode specified. Valid options are MICROPHONE, KEYBOARD, or REQUEST_ONLY.')
             sys.exit()
@@ -79,7 +85,7 @@ class Main():
                 self.send_to_rasa(utterance)
             rospy.sleep(1)
 
-    def spin_request_only(self):
+    def spin_external_only(self):
         while not rospy.is_shutdown():
             rospy.sleep(1)
 
@@ -108,8 +114,12 @@ class Main():
             utterance = input('utterance: ')
         elif INPUT == 'MICROPHONE':
             utterance = self.io.listen_once()
-        elif INPUT == 'REQUEST_ONLY':
-            utterance = self.io.listen_once()
+        elif INPUT == 'EXTERNAL':
+            self.waiting_for_external_response = True
+            while self.waiting_for_external_response:
+                self.logger.log('Waiting for external response...')
+                rospy.sleep(1)
+            utterance = copy.deepcopy(self.external_response)
 
         self.send_to_rasa(utterance)
 
@@ -155,6 +165,13 @@ class Main():
 
     def ros_callback_rasa_utterance_internal(self, msg):
         self.send_to_rasa(msg.data)
+
+    def ros_callback_external_input(self, msg):
+        if self.waiting_for_external_response:
+            self.external_response = msg.data
+            self.waiting_for_external_response = False
+        else:
+            self.send_to_rasa(msg.data)
 
 if __name__ == '__main__':
     m = Main()

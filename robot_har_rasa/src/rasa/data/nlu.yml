@@ -33,6 +33,11 @@ nlu:
     - please do
     - yeah
     - yeah go ahead
+    - that would be good
+    - i would appreciate it
+    - yeah please
+    - yeah thanks
+    - yes thanks
 
 - intent: intent_wait
   examples: |
@@ -43,6 +48,10 @@ nlu:
     - hold on a second
     - hold on a moment
     - wait just a second
+    - not yet i'm not
+    - wait a minute
+    - oh don't do that yet
+    - hold your horses
 
 - intent: intent_reject
   examples: |
@@ -51,6 +60,9 @@ nlu:
     - no thank you
     - please don't
     - don't do that
+    - i'd rather you didn't
+    - thanks but please don't
+    - uh no
 
 # teaching commands
 - intent: intent_start_teaching_adl
@@ -167,6 +179,12 @@ nlu:
     - give me the flask
     - can i take that from you
     - give me what you are holding
+
+- intent: intent_open_gripper
+  examples: |
+    - open your gripper
+    - open your gripper please
+    - can you open your gripper
 
 # synonyms
 

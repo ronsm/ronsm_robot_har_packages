@@ -16,6 +16,7 @@ intents:
   - intent_pick_up_object
   - intent_go_to_room
   - intent_hand_over
+  - intent_open_gripper
 
 entities:
   - object
@@ -38,9 +39,9 @@ responses:
   utter_create_adl_monitoring_rule:
   - text: 'Sorry, this feature is currently unsupported.'
   utter_out_of_scope:
-  - text: 'Sorry, I am not sure what you said. Please try again.'
+  - text: 'Sorry, I am not sure what you want me to do. Please try again.'
   utter_please_rephrase:
-  - text: 'Sorry, I am not sure what you said. Please try again.'
+  - text: 'Sorry, I am not sure what you want me to do. Please try again.'
 
 session_config:
   session_expiration_time: 60

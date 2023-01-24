@@ -29,6 +29,11 @@ rules:
   - intent: intent_reject
   - action: action_simple_ros_command
 
+- rule: Wait help request
+  steps:
+  - intent: intent_wait
+  - action: action_simple_ros_command
+
 - rule: Start learning ADL
   steps:
   - intent: intent_start_teaching_adl
@@ -66,6 +71,11 @@ rules:
   - intent: intent_hand_over
   - action: action_simple_ros_command
 
+- rule: Rule for intent_open_gripper
+  steps:
+  - intent: intent_open_gripper
+  - action: action_simple_ros_command
+
 # - rule: Register a marker
 #   steps:
 #   - intent: intent_register_marker
@@ -75,10 +85,3 @@ rules:
   steps:
   - intent: intent_look_at_marker
   - action: action_simple_ros_command
-
-  # Speech Actions
-
-  # - rule: Say goodbye anytime the user says goodbye
-#   steps:
-#   - intent: goodbye
-#   - action: utter_goodbye

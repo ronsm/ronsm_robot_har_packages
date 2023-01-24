@@ -60,7 +60,7 @@ class CheckPreconditions():
             for bounding_box in self.bounding_boxes:
                 if bounding_box.Class == target:
                     print(bounding_box)
-                    if (bounding_box.xmin > 220) and (bounding_box.xmax < 410):
+                    if (bounding_box.xmin > 180) and (bounding_box.xmax < 450):
                         self.logger.log('Yes')
                         found = True
             waits = waits + 1
